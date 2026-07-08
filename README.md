@@ -1,2 +1,2 @@
-# backtest-strategy
-Backtest Strategy
+# auto-invest-strategy
+Auto Invest Strategy
