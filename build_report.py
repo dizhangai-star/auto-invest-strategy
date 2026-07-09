@@ -3,10 +3,10 @@ build_report — stitch the committed results/*.md + *.png into one self-contain
 
 Separate from backtest.py on purpose: the engine owns the numbers, this only *presents*
 the markdown/PNG it already wrote. No new figures are computed here, so the report can
-never drift from the reference snapshots. Output: results/index.html (single file, PNGs
-embedded as base64 — portable, opens offline, publishable via GitHub Pages).
+never drift from the reference snapshots. Output: docs/index.html (single file, PNGs
+embedded as base64 — portable, opens offline, published via GitHub Pages from /docs).
 
-Run:  python build_report.py     (after backtest.py has produced the results/)
+Run:  python3 build_report.py    (after backtest.py has produced the results/)
 Deps: none beyond the standard library.
 """
 from __future__ import annotations
