@@ -85,6 +85,12 @@ python3 build_report.py      # stitch results/*.md + *.png -> docs/index.html (G
 To verify the offline CSV fallback reproduces `results/baseline.md` (no network): stub
 `yfinance` so `yf.download` raises, which forces the `data/*.csv` branch in `load_prices`.
 
+**Reproducibility — regenerate committed reference artifacts (`results/*.md`, `*.csv`) with
+the network OFF.** Live yfinance re-adjusts adjusted-close between calls, so same-seed runs
+drift (same date range, subtly different numbers) — not byte-reproducible. The committed
+reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py` will show
+`results/` as modified, which is expected, not a real change.
+
 ## Out of scope for now (flagged, not hidden)
 
 - Currency overlay (NZD/USD) — real extra variance for the baby's US ETF.

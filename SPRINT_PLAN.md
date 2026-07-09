@@ -34,7 +34,7 @@ intentionally gitignored (regenerated, not committed).
 
 ---
 
-## Sprint 1 — Randomized-window distribution study  ✅ tasks 1–4 done · task 5 (CSV contract) open
+## Sprint 1 — Randomized-window distribution study  ✅ done
 
 The point of the whole project (CLAUDE.md principle #3). Replace single-start-date CAGR
 with the **spread of outcomes** over many overlapping/random windows.
@@ -50,6 +50,11 @@ with the **spread of outcomes** over many overlapping/random windows.
 5. **Persist per-window results** (final multiple, XIRR, p10/p50/p90 wealth trajectories) to
    `results/windows_<ticker>.csv` — structured, not just a PNG. This is the **data contract**
    the later dashboard (Sprint 4) reads; it must never re-simulate.
+   → done: `persist_window_data()` writes, per scenario × ticker,
+   `results/windows_<scenario>_<ticker>.csv` (one row per window: multiple, XIRR, max_dd) and
+   `results/fan_<scenario>_<ticker>.csv` (p10/p50/p90 wealth-multiple vs elapsed years, for the
+   Sprint 4 percentile fan). **Regenerate the committed reference with network off** (live
+   yfinance re-adjusts and shifts the numbers) — same offline convention as `baseline.md`.
 
 **Done when:** we can state, e.g., "over 1000 random 18-yr paths, QQQ beat SPY in X% of
 them, but the bottom decile was Y% worse" — the concentration-risk answer with numbers.
@@ -172,14 +177,10 @@ plus this plan committed and pushed to `main`.
 
 ## Next session
 
-Sprint 0 is shipped; Sprint 1 **tasks 1–4 are done** (distribution study + `results/random_windows.md`)
-and the report pipeline (`build_report.py` → `docs/index.html`) is in place. Next, in a
-**fresh session**:
+Sprint 0 is shipped; **Sprint 1 is done** (distribution study + `results/random_windows.md`,
+plus the task-5 CSV data contract `results/{windows,fan}_*.csv`) and the report pipeline
+(`build_report.py` → `docs/index.html`) is in place. Next, in a **fresh session**:
 
-- **Open carryover — Sprint 1 task 5:** persist per-window results to
-  `results/windows_<ticker>.csv` (final multiple, XIRR, p10/p50/p90 trajectories) — the data
-  contract Sprint 4 reads. Added after the Sprint 1 build; not yet implemented. Do this before
-  starting Sprint 4.
 - **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
   `docs/index.html` goes live; push `main` first.
 - Then pick **Sprint 2** (baby: QQQM/VOO + NZDUSD overlay) or **Sprint 3** (wife: after-tax
