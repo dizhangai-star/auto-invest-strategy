@@ -74,7 +74,7 @@ SPY XIRR p10 falls to 2.2%, and both scenarios put a ~40–47% balance drawdown 
 
 ---
 
-## Sprint 2 — Real-world overlays for the *Baby* decision
+## Sprint 2 — Real-world overlays for the *Baby* decision  ✅ SHIPPED
 
 Make the baby's actual instrument and currency exposure honest.
 
@@ -88,6 +88,15 @@ Make the baby's actual instrument and currency exposure honest.
 
 **Done when:** the baby scenario is reportable in NZD, net of FX fee, with QQQM (not QQQ)
 as the instrument, and we know the currency swing's size.
+
+**Result** (`results/sprint2_overlays.md`, `python3 backtest.py && python3 build_report.py`):
+QQQM tracks QQQ to **+0.06%/yr** and VOO tracks SPY to **+0.04%/yr** — the cheaper share class is
+ahead by ≈ its TER edge (daily "TE" ~0.9% is mean-reverting print noise, autocorr −0.53, that
+washes out). Using **QQQM is free money**. The 0.5% Hatch FX fee is a flat **0.50% of terminal
+wealth (horizon-independent), ~0.03%/yr** XIRR — negligible. The one real overlay is **currency**:
+the unhedged NZDUSD (2003-12→now, range **0.49–0.88**, ~**12%/yr** vol) added +1.5%/yr *in this
+window only because the NZD fell* — backward-looking luck that cuts both ways over the baby's 18 yr.
+New data: `data/QQQM.csv`, `data/VOO.csv`, `data/NZDUSD=X.csv` (offline fallback reproduces exactly).
 
 ---
 
@@ -169,6 +178,19 @@ section + chart at the published URL.
 - Don't double-count TER (it's in NAV); only extra cost is platform FX.
 - Be honest, not reassuring — if the data undercuts QQQ concentration, say so.
 
+## Engine gotchas (learned in-sprint)
+
+- **Adding a ticker ≠ adding to `TICKERS`.** `load_prices([...])` ends with a cross-ticker
+  `dropna` that collapses the frame to the *shortest* history's start (QQQM ⇒ 2020, silently).
+  To use a fund on its own full history, load it alone via `load_series(ticker)` (Sprint 2).
+- **Offline CSV name = yfinance symbol verbatim**, incl. FX: `data/NZDUSD=X.csv` (bare `NZDUSD`
+  404s on Yahoo). Keeps the online and offline branches on one string.
+- **Committed PNGs aren't byte-reproducible** (matplotlib) — a rerun churns them. Only commit the
+  PNG for the sprint you changed; `git checkout -- results/<other>.png` drops spurious diffs.
+- **"Tracking diff" vs "tracking error":** the decision number is the annualized *total-return
+  gap* (≈TER, <0.1%); the daily return-diff std (~0.9%/yr) is mean-reverting print noise. Lead
+  with the gap.
+
 ## Sequencing & priority
 
 `Sprint 0 → Sprint 1` first (distribution is the core insight). Sprint 2 and 3 are
@@ -188,7 +210,8 @@ plus the task-5 CSV data contract `results/{windows,fan}_*.csv`) and the report 
 
 - **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
   `docs/index.html` goes live; push `main` first.
-- Then pick **Sprint 2** (baby: QQQM/VOO + NZDUSD overlay) or **Sprint 3** (wife: after-tax
-  PIE-vs-FIF + fee/cadence) — independent, driven by which decision is more urgent.
+- **Sprint 2 is shipped** (baby: QQQM/VOO tracking + NZDUSD overlay + FX-fee drag →
+  `results/sprint2_overlays.md/.png`). Next is **Sprint 3** (wife: after-tax PIE-vs-FIF +
+  fee/cadence) — the remaining decision-driving sprint.
 - Per-sprint contract: drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS` in
   `build_report.py`, rerun both scripts.
