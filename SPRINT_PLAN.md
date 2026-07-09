@@ -10,11 +10,16 @@ Every sprint below must end with an output that changes/confirms one of these tw
 
 ---
 
-## Sprint 0 — Baseline verified (mostly built)
+## Sprint 0 — Baseline verified  ✅ SHIPPED
 
 `backtest.py` already computes per-ticker metrics, period-bias CAGR table, two DCA
 scenarios (XIRR + multiple), and growth/drawdown plots. This sprint just **proves it runs
 on real data** and locks a reference output.
+
+**Status:** all three tasks done and committed (`9496a66`). Offline CSV fallback re-verified
+to reproduce `results/baseline.md` exactly (window 1999-03-10 → 2026-07-08, 6874 days, 0 NaNs;
+QQQ −83.0% / 12.4-yr recovery present; both DCA XIRRs match). `backtest_charts.png` is
+intentionally gitignored (regenerated, not committed).
 
 **Tasks**
 1. Run `python backtest.py` locally (needs open internet for yfinance). → verify: prints
@@ -42,6 +47,9 @@ with the **spread of outcomes** over many overlapping/random windows.
 3. Report **distribution, not a point**: p10 / p50 / p90 XIRR and multiple, % of windows
    where QQQ beats SPY, worst-window drawdown during the accumulation.
 4. Plot: histogram / violin of XIRR for QQQ vs SPY, both scenarios.
+5. **Persist per-window results** (final multiple, XIRR, p10/p50/p90 wealth trajectories) to
+   `results/windows_<ticker>.csv` — structured, not just a PNG. This is the **data contract**
+   the later dashboard (Sprint 4) reads; it must never re-simulate.
 
 **Done when:** we can state, e.g., "over 1000 random 18-yr paths, QQQ beat SPY in X% of
 them, but the bottom decile was Y% worse" — the concentration-risk answer with numbers.
@@ -83,6 +91,37 @@ Make the PIE-vs-alternative comparison fair, and settle contribution cadence.
 
 ---
 
+## Sprint 4 — Interactive dashboard  *(deferred; off critical path)*
+
+A **communication / intuition layer**, not new evidence. It *reads* the outputs of Sprints
+1–3 (via the Sprint 1 data contract) and never re-simulates. Built only after the research
+core is static and stable. Detailed scoping in `~/.claude/plans/second-thing-that-i-typed-panda.md`.
+
+**Library decision (researched — don't rebuild the wheel):** no off-the-shelf backtest lib
+models our core unit (distribution across randomized windows), so no heavyweight framework.
+Reject **vectorbt** (now OSS maintenance-mode; engine around a single-path object). Use
+**Plotly** as the rendering layer → single self-contained `results/dashboard.html`
+(`include_plotlyjs=True`, opens offline, versions like the PNG); optionally borrow
+**QuantStats** for the boilerplate distribution/drawdown tearsheet. Streamlit/Dash rejected
+(need a running server; break the committed-reproducible-artifact model).
+
+**Tasks**
+1. **Outcome distribution** (lead view) — Plotly histogram/violin of XIRR & multiple, QQQ vs
+   SPY, per scenario.
+2. **Percentile fan** — filled p10–p90 band + p50 line from the window trajectories. Keeps
+   the distribution, not one line, front-and-center.
+3. **Bull/bear cycles** — `add_vrect` shaded spans from the engine's existing drawdown cycles
+   (e.g. QQQ −83% dot-com span, 12.4-yr recovery). Reuse `backtest.py` drawdown logic; don't
+   re-detect regimes.
+4. **Orders on chart** — DCA-buy markers on a single price path, **labelled as one illustrative
+   path** (CLAUDE.md #3). Secondary section, never the landing view.
+
+**Done when:** a committed self-contained `results/dashboard.html` renders all four views with
+network off, and its numbers match the committed `results/` tables/CSVs exactly (no divergent
+recompute). Guardrail: lead with the distribution; the single-path view stays clearly secondary.
+
+---
+
 ## Cross-cutting rules (from CLAUDE.md — non-negotiable)
 
 - Total-return prices only; XIRR is the headline for DCA, CAGR reported alongside with the gap explained.
@@ -103,6 +142,7 @@ plus this plan committed and pushed to `main`.
 
 ## Next session
 
-Real work starts in a **fresh session** to keep context clean. Begin at **Sprint 0**:
-run `backtest.py` on real data, snapshot `results/baseline.md`, save offline CSVs — then
-proceed to the Sprint 1 randomized-window study.
+Sprint 0 is shipped. Begin at **Sprint 1** — the randomized-window distribution study
+(`simulate_random_windows`, N=1000 deterministic under `--seed`, p10/p50/p90 XIRR & multiple,
+% windows QQQ beats SPY). Remember task 5: persist per-window results to
+`results/windows_<ticker>.csv` as the data contract for the later dashboard (Sprint 4).
