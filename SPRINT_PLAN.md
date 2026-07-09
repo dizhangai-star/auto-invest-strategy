@@ -83,25 +83,25 @@ Make the PIE-vs-alternative comparison fair, and settle contribution cadence.
 
 ---
 
-## Reporting & hosting — `build_report.py` → `results/index.html`
+## Reporting & hosting — `build_report.py` → `docs/index.html` (GitHub Pages)
 
 A single HTML page presents the whole study; it is the shareable artifact for the two
 household decisions.
 
 - **`build_report.py`** is a *tiny, separate* script (stdlib only) that stitches the
-  committed `results/*.md` + `*.png` into one self-contained `results/index.html` (PNGs
+  committed `results/*.md` + `*.png` into one self-contained `docs/index.html` (PNGs
   base64-embedded → portable, opens offline). It computes **no numbers** — the engine
   (`backtest.py`) owns those — so the page can never drift from the reference snapshots.
 - **Contract:** each sprint drops a `results/<name>.md` (+ optional `<name>.png`) and adds
   one line to `SECTIONS` in `build_report.py`. Honesty caveats live in the markdown, so they
   carry into the page for free.
 - **Regenerate:** `python backtest.py && python build_report.py`.
-- **Host:** publish `results/index.html` via **GitHub Pages** (repo already on GitHub).
-  Point Pages at `/results` on `main` (or copy to `/docs`); the page is static and
-  self-contained, so no build step is needed on the Pages side.
+- **Host:** **GitHub Pages**, source = **`main` branch, `/docs` folder** (Settings → Pages).
+  The page is static and self-contained, so no Pages build step is needed. One-time repo
+  setting; after that every `build_report.py` commit updates the live page.
 
-**Done when:** `results/index.html` renders every sprint's section + chart and is reachable
-at the Pages URL.
+**Done when:** Pages is enabled on `/docs` and `docs/index.html` renders every sprint's
+section + chart at the published URL.
 
 ## Cross-cutting rules (from CLAUDE.md — non-negotiable)
 

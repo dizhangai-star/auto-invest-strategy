@@ -20,7 +20,7 @@ SECTIONS = [
     ("results/baseline.md", "backtest_charts.png"),
     ("results/random_windows.md", "results/random_windows.png"),
 ]
-OUT = "results/index.html"
+OUT = "docs/index.html"          # GitHub Pages source: main branch /docs folder
 
 
 # --- tiny markdown -> HTML (only the subset our results/*.md use) ---------------------
