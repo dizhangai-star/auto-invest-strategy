@@ -83,6 +83,26 @@ Make the PIE-vs-alternative comparison fair, and settle contribution cadence.
 
 ---
 
+## Reporting & hosting — `build_report.py` → `results/index.html`
+
+A single HTML page presents the whole study; it is the shareable artifact for the two
+household decisions.
+
+- **`build_report.py`** is a *tiny, separate* script (stdlib only) that stitches the
+  committed `results/*.md` + `*.png` into one self-contained `results/index.html` (PNGs
+  base64-embedded → portable, opens offline). It computes **no numbers** — the engine
+  (`backtest.py`) owns those — so the page can never drift from the reference snapshots.
+- **Contract:** each sprint drops a `results/<name>.md` (+ optional `<name>.png`) and adds
+  one line to `SECTIONS` in `build_report.py`. Honesty caveats live in the markdown, so they
+  carry into the page for free.
+- **Regenerate:** `python backtest.py && python build_report.py`.
+- **Host:** publish `results/index.html` via **GitHub Pages** (repo already on GitHub).
+  Point Pages at `/results` on `main` (or copy to `/docs`); the page is static and
+  self-contained, so no build step is needed on the Pages side.
+
+**Done when:** `results/index.html` renders every sprint's section + chart and is reachable
+at the Pages URL.
+
 ## Cross-cutting rules (from CLAUDE.md — non-negotiable)
 
 - Total-return prices only; XIRR is the headline for DCA, CAGR reported alongside with the gap explained.
