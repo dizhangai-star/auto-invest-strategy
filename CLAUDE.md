@@ -62,9 +62,12 @@ flattering return number.
 
 ```
 backtest.py        # engine: data load, metrics, XIRR, DCA sims, period-bias, plots
+build_report.py    # stdlib-only: stitch results/*.md + *.png -> docs/index.html (computes no numbers)
 requirements.txt   # pandas, numpy, yfinance, matplotlib
 README.md          # run instructions + caveats
 data/              # optional offline CSV fallback (data/SPY.csv, data/QQQ.csv)
+results/           # per-sprint snapshots: <name>.md (numbers + honesty caveats) + <name>.png
+docs/              # generated index.html for GitHub Pages (source: main /docs) — do not hand-edit
 ```
 
 All tunables live in the `CONFIG` block at the top of `backtest.py`.
@@ -73,7 +76,8 @@ All tunables live in the `CONFIG` block at the top of `backtest.py`.
 
 ```bash
 pip install -r requirements.txt
-python backtest.py
+python3 backtest.py          # use python3 — no bare `python` on this machine
+python3 build_report.py      # stitch results/*.md + *.png -> docs/index.html (GitHub Pages)
 ```
 
 `yfinance` needs open internet (works locally; the Claude web sandbox can't reach Yahoo).

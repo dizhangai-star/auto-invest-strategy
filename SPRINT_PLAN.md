@@ -29,7 +29,7 @@ on real data** and locks a reference output.
 
 ---
 
-## Sprint 1 — Randomized-window distribution study  *(highest value; do first)*
+## Sprint 1 — Randomized-window distribution study  ✅ done
 
 The point of the whole project (CLAUDE.md principle #3). Replace single-start-date CAGR
 with the **spread of outcomes** over many overlapping/random windows.
@@ -45,6 +45,14 @@ with the **spread of outcomes** over many overlapping/random windows.
 
 **Done when:** we can state, e.g., "over 1000 random 18-yr paths, QQQ beat SPY in X% of
 them, but the bottom decile was Y% worse" — the concentration-risk answer with numbers.
+
+**Result** (`results/random_windows.md`, `python3 backtest.py && python3 build_report.py`):
+over 1000 random 18-yr weekly-DCA paths (seed 42) QQQ beat SPY in **100%**, median XIRR
+16.6% vs 11.3%. **But** that 100% is a *sample-length artifact* — 27 yr of history allows only
+~9 yr of distinct 18-yr starts, so the "windows" heavily overlap one macro path; no completed
+18-yr window since 1999 has punished QQQ's concentration. Treat concentration risk as *not
+disproven*, not absent. Wife's 10-yr study (more distinct starts) shows the honest downside:
+SPY XIRR p10 falls to 2.2%, and both scenarios put a ~40–47% balance drawdown on the table.
 
 ---
 
@@ -123,6 +131,12 @@ plus this plan committed and pushed to `main`.
 
 ## Next session
 
-Real work starts in a **fresh session** to keep context clean. Begin at **Sprint 0**:
-run `backtest.py` on real data, snapshot `results/baseline.md`, save offline CSVs — then
-proceed to the Sprint 1 randomized-window study.
+Sprints 0 and 1 are done (baseline + distribution study), and the report pipeline
+(`build_report.py` → `docs/index.html`) is in place. Next, in a **fresh session**:
+
+- **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
+  `docs/index.html` goes live; push `main` first.
+- Then pick **Sprint 2** (baby: QQQM/VOO + NZDUSD overlay) or **Sprint 3** (wife: after-tax
+  PIE-vs-FIF + fee/cadence) — independent, driven by which decision is more urgent.
+- Per-sprint contract: drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS` in
+  `build_report.py`, rerun both scripts.
