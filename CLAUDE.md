@@ -73,10 +73,13 @@ All tunables live in the `CONFIG` block at the top of `backtest.py`.
 
 ```bash
 pip install -r requirements.txt
-python backtest.py
+python3 backtest.py     # `python` is not on PATH on this machine — use python3
 ```
 
 `yfinance` needs open internet (works locally; the Claude web sandbox can't reach Yahoo).
+
+To verify the offline CSV fallback reproduces `results/baseline.md` (no network): stub
+`yfinance` so `yf.download` raises, which forces the `data/*.csv` branch in `load_prices`.
 
 ## Out of scope for now (flagged, not hidden)
 
