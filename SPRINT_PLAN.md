@@ -34,7 +34,7 @@ intentionally gitignored (regenerated, not committed).
 
 ---
 
-## Sprint 1 — Randomized-window distribution study  ✅ done
+## Sprint 1 — Randomized-window distribution study  ✅ done (incl. task 5, validated)
 
 The point of the whole project (CLAUDE.md principle #3). Replace single-start-date CAGR
 with the **spread of outcomes** over many overlapping/random windows.
@@ -55,6 +55,11 @@ with the **spread of outcomes** over many overlapping/random windows.
    `results/fan_<scenario>_<ticker>.csv` (p10/p50/p90 wealth-multiple vs elapsed years, for the
    Sprint 4 percentile fan). **Regenerate the committed reference with network off** (live
    yfinance re-adjusts and shifts the numbers) — same offline convention as `baseline.md`.
+   → **validated (2026-07): offline regeneration is byte-identical to the committed CSVs, and
+   `windows_*.csv` ties out exactly to `random_windows.md` (XIRR p10/p50/p90 + multiples,
+   win-rates 100%/96.4%), 0 NaNs.** Note for Sprint 4: the fan's terminal p50 is a hair below
+   `windows.csv` multiple p50 by design (cross-window percentile per elapsed step, truncated to
+   the shortest window) — don't try to reconcile the gap.
 
 **Done when:** we can state, e.g., "over 1000 random 18-yr paths, QQQ beat SPY in X% of
 them, but the bottom decile was Y% worse" — the concentration-risk answer with numbers.
