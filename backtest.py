@@ -231,19 +231,25 @@ def sample_start_dates(index: pd.DatetimeIndex, years: int, n: int, seed: int) -
     return [index[i] for i in rng.integers(0, n_valid, size=n)]
 
 
-def simulate_random_windows(prices: pd.DataFrame, ticker: str, years: int, freq: str,
-                            n: int, amount: float, fx_fee: float = 0.0, lump: float = 0.0,
-                            seed: int = SEED) -> pd.DataFrame:
-    """Run the DCA sim over N random `years`-long windows; one row per window."""
+def _iter_windows(prices: pd.DataFrame, ticker: str, years: int, freq: str, n: int,
+                  amount: float, fx_fee: float, lump: float, seed: int):
+    """Yield (start, end, DcaResult) for each of N random `years`-long windows."""
     s = prices[ticker].dropna()
-    rows = []
     for st in sample_start_dates(s.index, years, n, seed):
         window = s.loc[st:st + pd.DateOffset(years=years)]
         if len(window) < 50:
             continue
-        r = simulate_dca(window, amount, freq, fx_fee=fx_fee, lump=lump)
-        rows.append({"start": st, "end": window.index[-1], "multiple": r.multiple,
-                     "xirr": r.xirr, "max_dd": _dca_value_drawdown(r.curve)})
+        yield st, window.index[-1], simulate_dca(window, amount, freq, fx_fee=fx_fee, lump=lump)
+
+
+def simulate_random_windows(prices: pd.DataFrame, ticker: str, years: int, freq: str,
+                            n: int, amount: float, fx_fee: float = 0.0, lump: float = 0.0,
+                            seed: int = SEED) -> pd.DataFrame:
+    """Run the DCA sim over N random `years`-long windows; one row per window."""
+    rows = [{"start": st, "end": end, "multiple": r.multiple, "xirr": r.xirr,
+             "max_dd": _dca_value_drawdown(r.curve)}
+            for st, end, r in _iter_windows(prices, ticker, years, freq, n, amount,
+                                            fx_fee, lump, seed)]
     return pd.DataFrame(rows)
 
 
@@ -277,6 +283,39 @@ def print_random_windows(prices: pd.DataFrame, label: str, years: int, freq: str
         print(f"    XIRR edge (QQQ−SPY): median {pct(gap.median())}   worst {pct(gap.min())}   "
               f"best {pct(gap.max())}")
     return results
+
+
+# --------------------------------------------------------------------------------------
+# Sprint 1 task 5 — persist per-window results as the Sprint 4 data contract.
+# CSVs, not just a PNG, so the dashboard READS these and never re-simulates.
+#   results/windows_<scenario>_<ticker>.csv : one row per window (multiple, XIRR, max_dd)
+#   results/fan_<scenario>_<ticker>.csv     : p10/p50/p90 wealth-multiple vs elapsed years
+# --------------------------------------------------------------------------------------
+def persist_window_data(prices: pd.DataFrame, scenario: str, years: int, freq: str,
+                        amount: float, fx_fee: float, lump: float, n: int, seed: int,
+                        outdir: str = "results"):
+    per_year = {"W": 52, "MS": 12}[freq]
+    for t in prices.columns:
+        rows, trajs = [], []
+        for st, end, r in _iter_windows(prices, t, years, freq, n, amount, fx_fee, lump, seed):
+            rows.append({"start": st.date(), "end": end.date(), "multiple": r.multiple,
+                         "xirr": r.xirr, "max_dd": _dca_value_drawdown(r.curve)})
+            trajs.append((r.curve["value"] / r.curve["invested_cum"]).to_numpy())
+
+        pd.DataFrame(rows).to_csv(f"{outdir}/windows_{scenario}_{t}.csv", index=False)
+
+        # Percentile fan: align windows on a common contribution grid (they differ by a
+        # step or two), stack, take cross-window percentiles at each elapsed step.
+        length = min(len(x) for x in trajs)
+        mat = np.vstack([x[:length] for x in trajs])
+        fan = pd.DataFrame({
+            "years": np.arange(length) / per_year,
+            "wealth_mult_p10": np.percentile(mat, 10, axis=0),
+            "wealth_mult_p50": np.percentile(mat, 50, axis=0),
+            "wealth_mult_p90": np.percentile(mat, 90, axis=0),
+        })
+        fan.to_csv(f"{outdir}/fan_{scenario}_{t}.csv", index=False)
+    print(f"[data] wrote results/windows_{scenario}_*.csv + fan_{scenario}_*.csv")
 
 
 # --------------------------------------------------------------------------------------
@@ -395,6 +434,11 @@ def main():
                                 fx_fee=FX_FEE, lump=0.0, n=args.n, seed=args.seed)
     wife = print_random_windows(prices, "WIFE", WIFE_YEARS, "MS", WIFE_MONTHLY,
                                 fx_fee=0.0, lump=WIFE_LUMP, n=args.n, seed=args.seed)
+
+    persist_window_data(prices, "baby", BABY_YEARS, "W", WEEKLY_CONTRIB,
+                        fx_fee=FX_FEE, lump=0.0, n=args.n, seed=args.seed)
+    persist_window_data(prices, "wife", WIFE_YEARS, "MS", WIFE_MONTHLY,
+                        fx_fee=0.0, lump=WIFE_LUMP, n=args.n, seed=args.seed)
 
     if SAVE_PLOTS:
         make_plots(prices)
