@@ -34,7 +34,7 @@ intentionally gitignored (regenerated, not committed).
 
 ---
 
-## Sprint 1 — Randomized-window distribution study  *(highest value; do first)*
+## Sprint 1 — Randomized-window distribution study  ✅ tasks 1–4 done · task 5 (CSV contract) open
 
 The point of the whole project (CLAUDE.md principle #3). Replace single-start-date CAGR
 with the **spread of outcomes** over many overlapping/random windows.
@@ -53,6 +53,14 @@ with the **spread of outcomes** over many overlapping/random windows.
 
 **Done when:** we can state, e.g., "over 1000 random 18-yr paths, QQQ beat SPY in X% of
 them, but the bottom decile was Y% worse" — the concentration-risk answer with numbers.
+
+**Result** (`results/random_windows.md`, `python3 backtest.py && python3 build_report.py`):
+over 1000 random 18-yr weekly-DCA paths (seed 42) QQQ beat SPY in **100%**, median XIRR
+16.6% vs 11.3%. **But** that 100% is a *sample-length artifact* — 27 yr of history allows only
+~9 yr of distinct 18-yr starts, so the "windows" heavily overlap one macro path; no completed
+18-yr window since 1999 has punished QQQ's concentration. Treat concentration risk as *not
+disproven*, not absent. Wife's 10-yr study (more distinct starts) shows the honest downside:
+SPY XIRR p10 falls to 2.2%, and both scenarios put a ~40–47% balance drawdown on the table.
 
 ---
 
@@ -122,6 +130,28 @@ recompute). Guardrail: lead with the distribution; the single-path view stays cl
 
 ---
 
+## Reporting & hosting — `build_report.py` → `docs/index.html` (GitHub Pages)
+
+The **always-current lightweight report** (distinct from Sprint 4's richer interactive
+dashboard): a single static HTML page that *stitches* the committed snapshots, live from
+Sprint 1 onward. Sprint 4's `results/dashboard.html` is the deferred interactive layer; this
+`docs/index.html` is the zero-dependency page we can publish today.
+
+- **`build_report.py`** is a *tiny, separate* script (stdlib only) that stitches the
+  committed `results/*.md` + `*.png` into one self-contained `docs/index.html` (PNGs
+  base64-embedded → portable, opens offline). It computes **no numbers** — the engine
+  (`backtest.py`) owns those — so the page can never drift from the reference snapshots.
+- **Contract:** each sprint drops a `results/<name>.md` (+ optional `<name>.png`) and adds
+  one line to `SECTIONS` in `build_report.py`. Honesty caveats live in the markdown, so they
+  carry into the page for free.
+- **Regenerate:** `python3 backtest.py && python3 build_report.py`.
+- **Host:** **GitHub Pages**, source = **`main` branch, `/docs` folder** (Settings → Pages).
+  The page is static and self-contained, so no Pages build step is needed. One-time repo
+  setting; after that every `build_report.py` commit updates the live page.
+
+**Done when:** Pages is enabled on `/docs` and `docs/index.html` renders every sprint's
+section + chart at the published URL.
+
 ## Cross-cutting rules (from CLAUDE.md — non-negotiable)
 
 - Total-return prices only; XIRR is the headline for DCA, CAGR reported alongside with the gap explained.
@@ -142,7 +172,17 @@ plus this plan committed and pushed to `main`.
 
 ## Next session
 
-Sprint 0 is shipped. Begin at **Sprint 1** — the randomized-window distribution study
-(`simulate_random_windows`, N=1000 deterministic under `--seed`, p10/p50/p90 XIRR & multiple,
-% windows QQQ beats SPY). Remember task 5: persist per-window results to
-`results/windows_<ticker>.csv` as the data contract for the later dashboard (Sprint 4).
+Sprint 0 is shipped; Sprint 1 **tasks 1–4 are done** (distribution study + `results/random_windows.md`)
+and the report pipeline (`build_report.py` → `docs/index.html`) is in place. Next, in a
+**fresh session**:
+
+- **Open carryover — Sprint 1 task 5:** persist per-window results to
+  `results/windows_<ticker>.csv` (final multiple, XIRR, p10/p50/p90 trajectories) — the data
+  contract Sprint 4 reads. Added after the Sprint 1 build; not yet implemented. Do this before
+  starting Sprint 4.
+- **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
+  `docs/index.html` goes live; push `main` first.
+- Then pick **Sprint 2** (baby: QQQM/VOO + NZDUSD overlay) or **Sprint 3** (wife: after-tax
+  PIE-vs-FIF + fee/cadence) — independent, driven by which decision is more urgent.
+- Per-sprint contract: drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS` in
+  `build_report.py`, rerun both scripts.

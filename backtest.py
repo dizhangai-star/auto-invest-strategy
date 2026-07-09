@@ -25,6 +25,7 @@ Deps: pandas numpy yfinance matplotlib   (pip install -r requirements.txt)
 
 from __future__ import annotations
 import sys
+import argparse
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
@@ -40,6 +41,12 @@ WIFE_LUMP = 20000.0              # wife: initial lump
 WIFE_MONTHLY = 500.0             # wife: $/month
 SUBPERIOD_STARTS = ["1999-03-10", "2000-03-01", "2010-01-01", "2015-01-01", "2020-01-01"]
 SAVE_PLOTS = True
+
+# Sprint 1 — randomized-window study
+RANDOM_N = 1000                  # number of random start dates per scenario
+BABY_YEARS = 18                  # baby horizon: 18-yr weekly-DCA windows
+WIFE_YEARS = 10                  # wife horizon: ~10-yr lump+monthly windows
+SEED = 42                        # default RNG seed (override with --seed)
 
 TRADING_DAYS = 252
 
@@ -201,6 +208,78 @@ def simulate_dca(prices: pd.Series, amount: float, freq: str,
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 1 — randomized-window distribution study (CLAUDE.md principle #3)
+#
+# Replace a single start-date CAGR with the SPREAD of outcomes over N random windows.
+# Both tickers are sampled with the same seed on the same aligned index, so the start
+# dates are identical across QQQ/SPY — the head-to-head "% QQQ beats SPY" is paired.
+# --------------------------------------------------------------------------------------
+def _dca_value_drawdown(curve: pd.DataFrame) -> float:
+    """Worst peak-to-trough fall of the portfolio VALUE during accumulation (what the
+    investor actually sees in their balance)."""
+    v = curve["value"]
+    return (v / v.cummax() - 1).min()
+
+
+def sample_start_dates(index: pd.DatetimeIndex, years: int, n: int, seed: int) -> list:
+    """N random trading days that leave a full `years`-long window before the data ends."""
+    cutoff = index[-1] - pd.DateOffset(years=years)
+    n_valid = int((index <= cutoff).sum())
+    if n_valid < 1:
+        raise ValueError(f"history too short for {years}-yr windows")
+    rng = np.random.default_rng(seed)
+    return [index[i] for i in rng.integers(0, n_valid, size=n)]
+
+
+def simulate_random_windows(prices: pd.DataFrame, ticker: str, years: int, freq: str,
+                            n: int, amount: float, fx_fee: float = 0.0, lump: float = 0.0,
+                            seed: int = SEED) -> pd.DataFrame:
+    """Run the DCA sim over N random `years`-long windows; one row per window."""
+    s = prices[ticker].dropna()
+    rows = []
+    for st in sample_start_dates(s.index, years, n, seed):
+        window = s.loc[st:st + pd.DateOffset(years=years)]
+        if len(window) < 50:
+            continue
+        r = simulate_dca(window, amount, freq, fx_fee=fx_fee, lump=lump)
+        rows.append({"start": st, "end": window.index[-1], "multiple": r.multiple,
+                     "xirr": r.xirr, "max_dd": _dca_value_drawdown(r.curve)})
+    return pd.DataFrame(rows)
+
+
+def print_random_windows(prices: pd.DataFrame, label: str, years: int, freq: str,
+                         amount: float, fx_fee: float, lump: float, n: int,
+                         seed: int) -> dict:
+    print(f"\n=== Randomized-window study — {label}: {n} random {years}-yr {freq} windows ===")
+    results = {}
+    for t in prices.columns:
+        df = simulate_random_windows(prices, t, years, freq, n, amount,
+                                     fx_fee=fx_fee, lump=lump, seed=seed)
+        results[t] = df
+        q = df[["xirr", "multiple", "max_dd"]].quantile([0.1, 0.5, 0.9])
+        print(f"\n  {t}  ({len(df)} windows, {df['start'].min().date()} → "
+              f"{df['start'].max().date()} starts)")
+        print(f"    XIRR      p10 {pct(q.at[0.1,'xirr'])}   p50 {pct(q.at[0.5,'xirr'])}   "
+              f"p90 {pct(q.at[0.9,'xirr'])}")
+        print(f"    Multiple  p10 {q.at[0.1,'multiple']:.2f}x   p50 {q.at[0.5,'multiple']:.2f}x   "
+              f"p90 {q.at[0.9,'multiple']:.2f}x")
+        print(f"    Worst intra-window value drawdown: median {pct(q.at[0.5,'max_dd'])}   "
+              f"p10(worst decile) {pct(q.at[0.1,'max_dd'])}")
+
+    if "QQQ" in results and "SPY" in results:
+        paired = pd.concat([results["QQQ"].set_index("start")["xirr"],
+                            results["SPY"].set_index("start")["xirr"]],
+                           axis=1, keys=["QQQ", "SPY"]).dropna()
+        gap = paired["QQQ"] - paired["SPY"]
+        win = (gap > 0).mean()
+        print(f"\n  Head-to-head (paired starts): QQQ beat SPY in {pct(win)} of {len(paired)} "
+              f"windows.")
+        print(f"    XIRR edge (QQQ−SPY): median {pct(gap.median())}   worst {pct(gap.min())}   "
+              f"best {pct(gap.max())}")
+    return results
+
+
+# --------------------------------------------------------------------------------------
 # Reporting
 # --------------------------------------------------------------------------------------
 def pct(x, dp=1):
@@ -271,8 +350,39 @@ def make_plots(prices: pd.DataFrame):
     print("\n[plots] saved backtest_charts.png")
 
 
+def make_random_plots(baby: dict, wife: dict):
+    """Overlaid XIRR histograms, QQQ vs SPY, for both scenarios."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        print(f"[plots] random-window plot skipped: {e}", file=sys.stderr)
+        return
+
+    fig, ax = plt.subplots(2, 1, figsize=(10, 9))
+    for axis, (title, res) in zip(ax, [("Baby — 18-yr weekly DCA", baby),
+                                       ("Wife — 10-yr lump + monthly DCA", wife)]):
+        for t in res:
+            x = res[t]["xirr"].dropna() * 100
+            axis.hist(x, bins=40, alpha=0.5, label=f"{t} (median {x.median():.1f}%)")
+            axis.axvline(x.median(), linestyle="--", linewidth=1)
+        axis.set_title(f"{title}: XIRR distribution over random windows")
+        axis.set_xlabel("annualized XIRR (%)")
+        axis.set_ylabel("windows")
+        axis.legend()
+    fig.tight_layout()
+    fig.savefig("results/random_windows.png", dpi=120)
+    print("[plots] saved results/random_windows.png")
+
+
 # --------------------------------------------------------------------------------------
 def main():
+    ap = argparse.ArgumentParser(description="ETF backtest & DCA distribution study")
+    ap.add_argument("--seed", type=int, default=SEED, help="RNG seed for random windows")
+    ap.add_argument("--n", type=int, default=RANDOM_N, help="number of random windows")
+    args = ap.parse_args()
+
     prices = load_prices(TICKERS, START)
     prices = prices.dropna()  # align to common window
     print(f"Loaded {prices.columns.tolist()}  {prices.index[0].date()} -> {prices.index[-1].date()}  "
@@ -280,8 +390,15 @@ def main():
     print_metrics(prices)
     print_period_bias(prices)
     print_scenarios(prices)
+
+    baby = print_random_windows(prices, "BABY", BABY_YEARS, "W", WEEKLY_CONTRIB,
+                                fx_fee=FX_FEE, lump=0.0, n=args.n, seed=args.seed)
+    wife = print_random_windows(prices, "WIFE", WIFE_YEARS, "MS", WIFE_MONTHLY,
+                                fx_fee=0.0, lump=WIFE_LUMP, n=args.n, seed=args.seed)
+
     if SAVE_PLOTS:
         make_plots(prices)
+        make_random_plots(baby, wife)
     print("\nDone. Edit the CONFIG block at the top to change amounts, tickers, or dates.")
 
 
