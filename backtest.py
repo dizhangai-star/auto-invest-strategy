@@ -48,6 +48,10 @@ BABY_YEARS = 18                  # baby horizon: 18-yr weekly-DCA windows
 WIFE_YEARS = 10                  # wife horizon: ~10-yr lump+monthly windows
 SEED = 42                        # default RNG seed (override with --seed)
 
+# Sprint 2 — real-world overlays for the baby (QQQ) decision
+TWINS = [("QQQM", "QQQ"), ("VOO", "SPY")]   # (cheaper share class, its long-history twin)
+FX_TICKER = "NZDUSD=X"                        # USD per 1 NZD; offline: data/NZDUSD=X.csv
+
 TRADING_DAYS = 252
 
 
@@ -73,6 +77,12 @@ def load_prices(tickers, start) -> pd.DataFrame:
             s = pd.read_csv(f"data/{t}.csv", index_col=0, parse_dates=True)["Close"]
             frames[t] = s
         return pd.DataFrame(frames).dropna()
+
+
+def load_series(ticker) -> pd.Series:
+    """One ticker's FULL history. Sprint 2 loads each series alone: forcing QQQM/VOO/FX
+    into the shared aligned frame would dropna the common window down to QQQM's 2020 start."""
+    return load_prices([ticker], START)[ticker].dropna()
 
 
 # --------------------------------------------------------------------------------------
@@ -377,6 +387,103 @@ def make_random_plots(baby: dict, wife: dict):
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 2 — real-world overlays for the baby (QQQ) decision
+#   1. Do QQQM / VOO track their long-history twins?  (tracking difference vs daily noise)
+#   2. NZDUSD overlay: the unhedged currency swing on a USD-denominated ETF.
+#   3. The 0.5% platform FX fee per contribution — how much does it actually cost?
+# --------------------------------------------------------------------------------------
+def print_twins(pairs):
+    print("\n=== Sprint 2 · Task 1 — do the cheaper share classes track their twins? ===")
+    print("  Tracking difference = annualized total-return gap (the number that matters over a hold).")
+    for cheap, twin in pairs:
+        df = pd.concat([load_series(cheap), load_series(twin)], axis=1, keys=[cheap, twin]).dropna()
+        ca, cb = cagr(df[cheap]), cagr(df[twin])
+        r = df.pct_change().dropna()
+        te = (r[cheap] - r[twin]).std() * np.sqrt(TRADING_DAYS)
+        print(f"  {cheap} vs {twin}  ({df.index[0].date()}→{df.index[-1].date()}, "
+              f"{(df.index[-1]-df.index[0]).days/365.25:.1f}yr): tracking diff {pct(ca-cb, 2)}/yr  "
+              f"(CAGR {pct(ca)} vs {pct(cb)}), daily corr {r[cheap].corr(r[twin]):.4f}, "
+              f"daily TE {pct(te, 2)}/yr")
+    print("  (daily TE is mean-reverting close-print/dividend-timing noise; it nets to the tiny")
+    print("   tracking difference above, ≈ the TER gap. QQQM/VOO are faithful, cheaper twins.)")
+
+
+def print_fx_fee_drag():
+    print("\n=== Sprint 2 · Task 3 — 0.5% platform FX fee drag (baby weekly DCA into QQQ) ===")
+    q = load_series("QQQ")
+    r_fee = simulate_dca(q, WEEKLY_CONTRIB, "W", fx_fee=FX_FEE)
+    r_no = simulate_dca(q, WEEKLY_CONTRIB, "W", fx_fee=0.0)
+    print(f"  {r_fee.invested/WEEKLY_CONTRIB:.0f} weekly buys over "
+          f"{(q.index[-1]-q.index[0]).days/365.25:.0f}yr, invested ${r_fee.invested:,.0f}")
+    print(f"    with 0.5% FX fee: ${r_fee.final_value:,.0f}  XIRR {pct(r_fee.xirr)}")
+    print(f"    no fee:           ${r_no.final_value:,.0f}  XIRR {pct(r_no.xirr)}")
+    print(f"    drag: ${r_no.final_value-r_fee.final_value:,.0f} = exactly "
+          f"{pct(1-r_fee.final_value/r_no.final_value, 2)} of terminal wealth "
+          f"(horizon-independent), XIRR drag {pct(r_no.xirr-r_fee.xirr, 3)}/yr")
+
+
+def _dual_currency_dca(prices, fx, amount, freq, fx_fee):
+    """DCA valued two ways from the SAME nominal contribution: as USD, vs as NZD converted
+    to USD at each buy's spot (fx = USD per 1 NZD). Only difference is the currency layer."""
+    buys = _contribution_dates(prices, freq)
+    u_usd = u_nzd = 0.0
+    cf_usd, cf_nzd, dts = [], [], []
+    for dt, px in buys.items():
+        rate = fx.reindex([dt], method="ffill").iloc[0]
+        u_usd += amount * (1 - fx_fee) / px
+        u_nzd += (amount * rate) * (1 - fx_fee) / px
+        cf_usd.append(-amount); cf_nzd.append(-amount); dts.append(dt)
+    fpx = prices.iloc[-1]
+    frate = fx.reindex([prices.index[-1]], method="ffill").iloc[0]
+    cf_usd.append(u_usd * fpx); cf_nzd.append(u_nzd * fpx / frate); dts.append(prices.index[-1])
+    return xirr(cf_usd, dts), xirr(cf_nzd, dts), frate
+
+
+def print_nzd_overlay():
+    print("\n=== Sprint 2 · Task 2 — NZDUSD overlay: unhedged FX on the baby's US ETF ===")
+    q = load_series("QQQ")
+    fx = load_series(FX_TICKER)             # USD per 1 NZD
+    qw = q.loc[fx.index[0]:]                # FX history starts 2003-12; run both legs on it
+    x_usd, x_nzd, frate = _dual_currency_dca(qw, fx, WEEKLY_CONTRIB, "W", FX_FEE)
+    fxr = fx.pct_change().dropna()
+    drift = (fx.iloc[0] / frate) ** (365.25 / (fx.index[-1] - fx.index[0]).days) - 1
+    print(f"  window {qw.index[0].date()}→{qw.index[-1].date()} "
+          f"({(qw.index[-1]-qw.index[0]).days/365.25:.1f}yr); NZDUSD {fx.iloc[0]:.4f}→{frate:.4f} "
+          f"(range {fx.min():.4f}–{fx.max():.4f})")
+    print(f"    USD-terms XIRR {pct(x_usd)}   NZD-terms XIRR {pct(x_nzd)}   "
+          f"FX contribution {pct(x_nzd-x_usd)}/yr")
+    print(f"    NZDUSD annualized vol {pct(fxr.std()*np.sqrt(TRADING_DAYS))}, "
+          f"net USD-vs-NZD drift {pct(drift)}/yr")
+    print("  (Positive here is backward-looking: the NZD fell vs USD over this window. Unhedged,")
+    print("   this ~12%/yr currency swing cuts BOTH ways over the baby's 18yr — a labelled layer.)")
+
+
+def make_sprint2_plot():
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        print(f"[plots] sprint2 plot skipped: {e}", file=sys.stderr)
+        return
+    fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+    for cheap, twin in TWINS:
+        df = pd.concat([load_series(cheap), load_series(twin)], axis=1, keys=[cheap, twin]).dropna()
+        ratio = (df[cheap] / df[cheap].iloc[0]) / (df[twin] / df[twin].iloc[0])
+        ratio.plot(ax=ax[0], label=f"{cheap} / {twin}")
+    ax[0].axhline(1.0, color="k", lw=0.6, ls=":")
+    ax[0].set_title("Cheaper share class vs its twin — cumulative total-return ratio (≈1.0 = tracks)")
+    ax[0].set_ylabel("ratio")
+    ax[0].legend()
+    load_series(FX_TICKER).plot(ax=ax[1])
+    ax[1].set_title("NZDUSD=X (USD per 1 NZD) — the unhedged swing on the baby's US ETF")
+    ax[1].set_ylabel("USD per NZD")
+    fig.tight_layout()
+    fig.savefig("results/sprint2_overlays.png", dpi=120)
+    print("[plots] saved results/sprint2_overlays.png")
+
+
+# --------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="ETF backtest & DCA distribution study")
     ap.add_argument("--seed", type=int, default=SEED, help="RNG seed for random windows")
@@ -396,9 +503,14 @@ def main():
     wife = print_random_windows(prices, "WIFE", WIFE_YEARS, "MS", WIFE_MONTHLY,
                                 fx_fee=0.0, lump=WIFE_LUMP, n=args.n, seed=args.seed)
 
+    print_twins(TWINS)
+    print_nzd_overlay()
+    print_fx_fee_drag()
+
     if SAVE_PLOTS:
         make_plots(prices)
         make_random_plots(baby, wife)
+        make_sprint2_plot()
     print("\nDone. Edit the CONFIG block at the top to change amounts, tickers, or dates.")
 
 

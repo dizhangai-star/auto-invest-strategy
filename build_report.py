@@ -19,6 +19,7 @@ from pathlib import Path
 SECTIONS = [
     ("results/baseline.md", "backtest_charts.png"),
     ("results/random_windows.md", "results/random_windows.png"),
+    ("results/sprint2_overlays.md", "results/sprint2_overlays.png"),
 ]
 OUT = "docs/index.html"          # GitHub Pages source: main branch /docs folder
 
