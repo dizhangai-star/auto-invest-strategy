@@ -301,18 +301,20 @@ itself (one macro path, pre-tax, drawdowns en route). See `results/sprint5_proje
 
 ## Next session
 
-**Sprints 0–3 are all shipped** — the decision-driving research is done. Remaining work is
-presentation + hosting, not new evidence:
+**All planned sprints (0–5) are shipped and the site is live.** Nothing required remains.
 
-- **One-time (still open):** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
-  `docs/index.html` goes live; push `main` first.
+- **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
+  https://dizhangai-star.github.io/auto-invest-strategy/ (verified 2026-07 via the GitHub API).
 - **Sprint 4 is shipped** (interactive Plotly dashboard → `results/dashboard.html` +
   `docs/dashboard.html`, `python3 build_dashboard.py` — reads the Sprint 1 CSV contract +
-  offline `data/*.csv`, never re-simulates). With Sprints 0–3 also shipped, all planned
-  sprints are done; remaining candidate work is extending the dashboard with Sprint 3's
-  after-tax overlay if the static section proves insufficient.
+  offline `data/*.csv`, never re-simulates).
 - **Sprint 5 is shipped** (projection calculator, dashboard view 3 — client-side p10/p50/p90
   projections from `results/projection_factors.csv`; the Custom preset takes the user's own
   portfolio numbers whenever provided).
+- **Remaining candidate work (optional, not committed):**
+  - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
+    toggle) if the static section proves insufficient.
+  - Sequence-of-returns / withdrawal phase — still genuinely out of scope; becomes relevant
+    within ~5 yr of the baby's 18-yr horizon.
 - Per-sprint contract (if extending): drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS`
   in `build_report.py`, rerun both scripts (regenerate the committed reference **network-off**).

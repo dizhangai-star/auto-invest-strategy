@@ -100,15 +100,22 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 
 ## Out of scope for now (flagged, not hidden)
 
-- Sequence-of-returns / withdrawal phase — this is accumulation only.
-  (Currency and tax overlays shipped in Sprints 2–3 as labelled layers; base sims stay USD pre-tax.)
+- Sequence-of-returns / withdrawal phase — this is accumulation only. Becomes relevant
+  within ~5 yr of the baby's 18-yr horizon.
 
-## Status (detail in SPRINT_PLAN.md)
+## Roadmap — ✅ all shipped (see SPRINT_PLAN.md for results)
 
-Sprints 0–5 all shipped: randomized-window distributions, QQQM/VOO twins, NZDUSD overlay,
-after-tax PIE-vs-FIF layer, cadence sensitivity, dashboard, and the projection calculator
-(dashboard view 3, client-side p10/p50/p90 from `results/projection_factors.csv`).
-Open: user's own-portfolio numbers for the calculator's Custom preset.
+1. ✅ Randomized-window study → outcome distributions (Sprint 1).
+2. ✅ QQQM + VOO tracking check (Sprint 2 — QQQM ahead by ≈ its TER edge; use QQQM).
+3. ✅ NZDUSD overlay for the baby scenario (Sprint 2).
+4. ✅ After-tax layer: PIE 28% vs FIF FDR (Sprint 3).
+5. ✅ Fee sensitivity: weekly vs monthly DCA (Sprint 3 — a wash, ~0.03%/yr).
+6. ✅ Projection calculator — dashboard view 3, client-side p10/p50/p90 from
+   `results/projection_factors.csv` (Sprint 5).
+
+Open: user's own-portfolio numbers for the calculator's Custom preset. Optional candidate:
+add Sprint 3's after-tax overlay to the interactive dashboard if the static report section
+proves insufficient.
 
 ## Working style
 
