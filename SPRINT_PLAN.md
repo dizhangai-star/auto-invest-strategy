@@ -133,7 +133,7 @@ to −46.7% worst-decile. This is cash → equities — a change in risk level, 
 
 ---
 
-## Sprint 4 — Interactive dashboard  *(deferred; off critical path)*
+## Sprint 4 — Interactive dashboard  ✅ SHIPPED *(communication layer, not new evidence)*
 
 A **communication / intuition layer**, not new evidence. It *reads* the outputs of Sprints
 1–3 (via the Sprint 1 data contract) and never re-simulates. Built only after the research
@@ -161,6 +161,20 @@ Reject **vectorbt** (now OSS maintenance-mode; engine around a single-path objec
 **Done when:** a committed self-contained `results/dashboard.html` renders all four views with
 network off, and its numbers match the committed `results/` tables/CSVs exactly (no divergent
 recompute). Guardrail: lead with the distribution; the single-path view stays clearly secondary.
+
+**Result** (`build_dashboard.py` → `results/dashboard.html`, copied to `docs/dashboard.html`
+for Pages; section `results/sprint4_dashboard.md` added to the report): all four views ship.
+Key implementation choices — the script is **offline by construction** (reads only the
+committed `results/{windows,fan}_*.csv` + `data/*.csv`, never yfinance), so unlike
+`backtest.py` a live rerun cannot drift it; output is **byte-reproducible** (verified: two
+runs, identical md5; fixed Plotly `div_id`s). Distribution stats in the page are computed
+from the CSVs and tie out to `random_windows.md` exactly (XIRR p10/p50/p90 both scenarios,
+win-rates 100%/96.4%, drawdown p10s). Bear spans (QQQ ≤ −20%, engine's dd definition):
+dot-com −83% 2000-03→2015-02, 2018 −23%, 2020 −29%, 2022 −35%, 2025 −23%. Verified in a
+real browser: all four divs render, only network request is the page itself (self-contained).
+QuantStats skipped — nothing it adds that the four custom views don't. Built in parallel with
+Sprint 3 (independent: it consumes the Sprint 1 contract only); Sprint 3's after-tax overlay
+is a candidate future view, not yet in the dashboard.
 
 ---
 
@@ -264,8 +278,10 @@ presentation + hosting, not new evidence:
 
 - **One-time (still open):** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
   `docs/index.html` goes live; push `main` first.
-- **Sprint 4 (deferred, optional):** the richer interactive Plotly dashboard (`results/dashboard.html`)
-  — a *communication* layer that reads the Sprint 1–3 committed CSVs/tables and never re-simulates.
-  Off the critical path; build only if the static `docs/index.html` proves insufficient.
+- **Sprint 4 is shipped** (interactive Plotly dashboard → `results/dashboard.html` +
+  `docs/dashboard.html`, `python3 build_dashboard.py` — reads the Sprint 1 CSV contract +
+  offline `data/*.csv`, never re-simulates). With Sprints 0–3 also shipped, all planned
+  sprints are done; remaining candidate work is extending the dashboard with Sprint 3's
+  after-tax overlay if the static section proves insufficient.
 - Per-sprint contract (if extending): drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS`
   in `build_report.py`, rerun both scripts (regenerate the committed reference **network-off**).

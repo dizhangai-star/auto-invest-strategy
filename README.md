@@ -10,6 +10,8 @@ A small backtest to build intuition for the two setups you're planning:
 ```bash
 pip install -r requirements.txt
 python backtest.py
+python build_dashboard.py    # interactive Plotly dashboard -> results/dashboard.html
+                             # (reads the committed results/*.csv + data/*.csv; no network)
 ```
 
 Your machine has open internet, so `yfinance` pulls real total-return history for you.

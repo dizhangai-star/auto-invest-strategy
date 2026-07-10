@@ -21,6 +21,7 @@ SECTIONS = [
     ("results/random_windows.md", "results/random_windows.png"),
     ("results/sprint2_overlays.md", "results/sprint2_overlays.png"),
     ("results/sprint3_tax_cadence.md", "results/sprint3_tax_cadence.png"),
+    ("results/sprint4_dashboard.md", None),
 ]
 OUT = "docs/index.html"          # GitHub Pages source: main branch /docs folder
 
