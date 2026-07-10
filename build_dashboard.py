@@ -318,7 +318,7 @@ def projection_section() -> str:
     dd_note = (f"expect the balance itself to fall ~{-dd['baby_QQQ'].median():.0%} in the median "
                f"18-yr QQQ window (~{-dd['baby_QQQ'].quantile(0.1):.0%} worst decile), "
                f"~{-dd['wife_SPY'].median():.0%} median for the wife's lump+monthly SPY — "
-               f"see views 1 and 5.")
+               f"see the Outcome distribution and One-path views.")
     html = _PROJ_TEMPLATE.replace("__PROJ_JSON__", json.dumps(payload, separators=(",", ":")))
     for token, value in {
         "__DD_NOTE__": dd_note,
@@ -336,9 +336,19 @@ def projection_section() -> str:
 CSS = """
 * { box-sizing: border-box; }
 body { font: 16px/1.6 -apple-system, system-ui, sans-serif; color: #1a1a1a; background: #fcfcfb;
-       max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 5rem; }
+       margin: 0; display: flex; }
+.sidenav { flex: 0 0 220px; background: #f7f7f5; border-right: 1px solid #e3e2de; }
+.sidenav .navinner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
+                     padding: 1.5rem 1rem; }
+.sidenav .navtitle { font-weight: 700; font-size: .95rem; margin: 0 0 .8rem .6rem; color: #52514e; }
+.sidenav a { display: block; padding: .45rem .6rem; border-radius: 5px; color: #333;
+             text-decoration: none; font-size: .95rem; }
+.sidenav a.active { background: #e8eef8; color: #1a4f9c; font-weight: 600; }
+main { flex: 1; min-width: 0; max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
+.panel { display: none; }
+.panel.active { display: block; }
 h1 { font-size: 1.7rem; margin: 0 0 .5rem; }
-h2 { font-size: 1.2rem; margin: 2.5rem 0 .4rem; border-bottom: 1px solid #ddd; padding-bottom: .2rem; }
+h2 { font-size: 1.2rem; margin: 1rem 0 .4rem; border-bottom: 1px solid #ddd; padding-bottom: .2rem; }
 p { color: #333; max-width: 62rem; }
 .note { color: #52514e; font-size: .9rem; }
 .warn { background: #fff6e8; border-left: 3px solid #eda100; padding: .5rem .8rem; font-size: .9rem; }
@@ -353,6 +363,39 @@ p { color: #333; max-width: 62rem; }
 .projstats .stat b { font-size: 1.3rem; display: block; }
 .projstats .stat { font-size: .85rem; color: #52514e; }
 .projred { color: #c0392b; font-weight: 600; }
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  main { margin: 0; }
+  .sidenav { flex: none; border-right: 0; border-bottom: 1px solid #e3e2de; }
+  .sidenav .navinner { position: static; max-height: none; display: flex; flex-wrap: wrap;
+                       align-items: center; gap: .15rem; padding: .6rem 1rem; }
+  .sidenav .navtitle { margin: 0 .6rem 0 0; }
+}
+"""
+
+# Sidebar entries: (panel id, nav label). Hash routing (#id) selects the active panel;
+# an unknown or empty hash falls back to the first entry.
+PANELS = [("distribution", "Outcome distribution"),
+          ("fan", "Percentile fan"),
+          ("calculator", "Projection calculator"),
+          ("cycles", "Bull/bear cycles"),
+          ("orders", "One path (illustrative)")]
+
+# Plotly figures rendered inside display:none panels get fallback width, so every panel
+# activation re-sizes the plots it contains (rAF: after the display change lands).
+TAB_JS = """
+const panels=[...document.querySelectorAll("section.panel")];
+const links=[...document.querySelectorAll(".sidenav a")];
+function showPanel(){
+  let id=location.hash.slice(1);
+  if(!panels.some(p=>p.id===id))id=panels[0].id;
+  panels.forEach(p=>p.classList.toggle("active",p.id===id));
+  links.forEach(a=>a.classList.toggle("active",a.getAttribute("href")==="#"+id));
+  requestAnimationFrame(()=>document.querySelectorAll("#"+id+" .js-plotly-plot")
+    .forEach(el=>Plotly.Plots.resize(el)));
+}
+window.addEventListener("hashchange",showPanel);
+showPanel();
 """
 
 
@@ -373,59 +416,82 @@ def build() -> str:
                            config={"displaylogo": False, "responsive": True})
 
     window = f"{prices.index[0].date()} → {prices.index[-1].date()}"
+    nav = "\n".join(f'<a href="#{pid}">{label}</a>' for pid, label in PANELS)
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DCA outcome distributions — QQQ vs SPY</title><style>{CSS}</style></head><body>
+<aside class="sidenav">
+<div class="navinner">
+<div class="navtitle">DCA dashboard</div>
+{nav}
+</div>
+</aside>
+<main>
 <h1>DCA outcome distributions — QQQ vs SPY</h1>
 <p>Interactive companion to the committed <code>results/</code> snapshots. Total-return
 prices, USD, pre-tax; data window {window} (offline <code>data/*.csv</code>). The lead view
 is the <strong>distribution across randomized start dates</strong> — never one lucky or
-unlucky line. Built by <code>build_dashboard.py</code> from the Sprint 1 CSV contract; it
-re-simulates nothing, so these numbers match <code>results/random_windows.md</code> exactly.</p>
+unlucky line; use the sidebar to switch views. Built by <code>build_dashboard.py</code>
+from the Sprint 1 CSV contract; it re-simulates nothing, so these numbers match
+<code>results/random_windows.md</code> exactly.</p>
 <div class="warn">Honesty caveats: the baby's 100% QQQ win-rate is a <strong>sample-length
 artifact</strong> — ~27 yr of history means the 18-yr "windows" heavily overlap one macro
 path in which Nasdaq concentration was never punished end-to-end. Treat concentration risk
 as <em>not disproven</em>, not absent. Both scenarios put a ~40–47% balance drawdown on the
-table (view 1 notes, view 4 spans).</div>
+table (Outcome distribution notes, Bull/bear cycles spans).</div>
 
-<h2>1 · Outcome distribution (the headline view)</h2>
+<section class="panel" id="distribution">
+<h2>Outcome distribution (the headline view)</h2>
 <p class="note">{dist_notes}</p>
 {div(f1, 1, first=True)}
+</section>
 
-<h2>2 · Percentile fan — the spread as it unfolds</h2>
+<section class="panel" id="fan">
+<h2>Percentile fan — the spread as it unfolds</h2>
 <p class="note">Cross-window p10–p90 band and p50 line of portfolio value ÷ money put in,
 at each elapsed step (from <code>results/fan_*.csv</code>). Dotted line = break-even. The
 terminal p50 sits a hair below the windows-CSV multiple p50 by design (per-step cross-window
 percentile, truncated to the shortest window) — see SPRINT_PLAN Sprint 1 note.</p>
 {div(f2, 2)}
+</section>
 
-<h2>3 · Projection calculator — what the window distribution says about <em>your</em> plan</h2>
+<section class="panel" id="calculator">
+<h2>Projection calculator — what the window distribution says about <em>your</em> plan</h2>
 <p class="note">Deposit, cadence, horizon, lump, fee and QQQ/SPY mix are recomputed
 client-side from the committed <code>results/projection_factors.csv</code> — the engine's
-per-window linear factors over the same {RANDOM_N:,} random start dates (seed 42) as
-view 1, so the Baby preset reproduces <code>results/random_windows.md</code> exactly. The
-headline is the p10/p50/p90 <strong>range</strong>; the assumed-rate figure is a labelled
-intuition check, not evidence.</p>
+per-window linear factors over the same {RANDOM_N:,} random start dates (seed 42) as the
+Outcome distribution view, so the Baby preset reproduces
+<code>results/random_windows.md</code> exactly. The headline is the p10/p50/p90
+<strong>range</strong>; the assumed-rate figure is a labelled intuition check, not
+evidence.</p>
 {proj_html}
+</section>
 
-<h2>4 · Bull/bear cycles the windows are sampling from</h2>
+<section class="panel" id="cycles">
+<h2>Bull/bear cycles the windows are sampling from</h2>
 <p class="note">Growth of $1 (log). Shaded spans = QQQ bear episodes (any fall below
 {BEAR_THRESHOLD:.0%} from a running peak, shaded peak → recovery), computed with the same
 drawdown definition as the engine. The {worst['depth']:.0%} dot-com span
 ({worst['start'].date()} → {worst['end'].date()}) is the risk the randomized windows
 under-sample — it appears in full in no completed 18-yr window.</p>
 {div(f3, 4)}
+</section>
 
-<h2>5 · Orders on a chart — ONE illustrative path (not evidence)</h2>
+<section class="panel" id="orders">
+<h2>Orders on a chart — ONE illustrative path (not evidence)</h2>
 <p class="note"><strong>This is a single start date</strong> — exactly what the rest of this
 page exists to warn against. It is here only to show the mechanics of weekly DCA (buys land
-in crashes too) on the full-history QQQ path. Judge outcomes by views 1–2, not this.</p>
+in crashes too) on the full-history QQQ path. Judge outcomes by the Outcome distribution
+and Percentile fan views, not this.</p>
 {div(f4, 5)}
+</section>
 
 <p class="foot">Generated by <code>python3 build_dashboard.py</code> — reads committed
 <code>results/*.csv</code> + <code>data/*.csv</code>, computes no new evidence. Plotly
 embedded; opens offline. See <code>results/random_windows.md</code> and
 <code>SPRINT_PLAN.md</code> for methodology and caveats.</p>
+</main>
+<script>{TAB_JS}</script>
 </body></html>"""
     with open(OUT, "w") as f:
         f.write(html)
