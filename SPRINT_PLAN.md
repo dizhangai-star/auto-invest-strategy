@@ -116,6 +116,21 @@ Make the PIE-vs-alternative comparison fair, and settle contribution cadence.
 **Done when:** wife's decision doc shows net-of-tax outcomes and states the real downside
 (a cash→equities risk change), not just an expected return.
 
+**Status:** ✅ SHIPPED (`results/sprint3_tax_cadence.md/.png`, `python3 backtest.py && python3 build_report.py`).
+
+**Result:** the tax overlay is applied to the 1,000 random 10-yr windows (not one start).
+**FDR = a fixed asset drag** (deemed 5% of opening balance × your rate, return-independent) →
+models as an extra expense ratio, shifting the whole net-XIRR distribution left by ~1.4–2.0%/yr.
+Wife SPY net-XIRR p50: gross **10.7%** → **PIE @28% 9.2%** (drag 1.40%/yr) → direct FIF @39%+FX
+8.5% (1.95%/yr). The **PIE's edge over a direct hold is small** — the rate cap saves only
+0.25%/yr (vs 33%) to 0.55%/yr (vs 39%), plus it kills the 0.5% FX and the FIF $50k stacking; the
+tax *level* (~1.4%/yr) is the real cost either way. Caveat: FDR is light in hot markets but still
+due in flat years, and a PIE can't elect CV to pay ~0 in a loss year (a direct holder can).
+**Cadence is a wash** — the FX fee is per-dollar not per-trade, so weekly vs monthly differ by
+only ~0.03–0.04%/yr (timing). The decision that matters is **risk, not fees**: worst 12-mo SPY
+−47.4%, worst peak→trough −55.2% (3.4-yr recovery), accumulation balance drawdown −33.9% median
+to −46.7% worst-decile. This is cash → equities — a change in risk level, stated plainly.
+
 ---
 
 ## Sprint 4 — Interactive dashboard  *(deferred; off critical path)*
@@ -190,6 +205,16 @@ section + chart at the published URL.
 - **"Tracking diff" vs "tracking error":** the decision number is the annualized *total-return
   gap* (≈TER, <0.1%); the daily return-diff std (~0.9%/yr) is mean-reverting print noise. Lead
   with the gap.
+- **FDR tax = an asset-based drag, not a gains tax.** Deemed income = 5% of opening balance ×
+  rate, *independent of return*, so it's exactly an extra expense ratio → model by deflating the
+  total-return path `exp(-rate×5%·t)` and re-read the XIRR (Sprint 3 `apply_asset_drag`). The
+  deflation level cancels in each buy's growth ratio, so the drag lands over the true holding
+  period, not retroactively.
+- **`apply_asset_drag` on a frame:** `prices * 1d_array` broadcasts to *columns*, not rows —
+  use `prices.mul(deflator, axis=0)` so it works for a Series *and* a DataFrame.
+- **Avoid PNG churn on a partial run:** to regenerate just one sprint's artifacts, call that
+  sprint's functions in isolation (force offline, `import backtest`, call the fns) rather than
+  full `main()`, which re-churns every sprint's non-reproducible matplotlib PNG.
 
 ## Sequencing & priority
 
@@ -202,16 +227,45 @@ Remote: https://github.com/dizhangai-star/auto-invest-strategy.git
 Git initialized and v0 (`backtest.py`, `README.md`, `requirements.txt`, both `CLAUDE.md`)
 plus this plan committed and pushed to `main`.
 
+## Bottom line so far — the two decisions (Sprints 0–3)
+
+The **research core is complete**: both live decisions now have a distribution-aware, after-fee,
+after-tax evidence base. What the numbers say:
+
+**Baby — QQQM / Nasdaq-100, ~18-yr weekly DCA (Hatch Kids).**
+- Over 1,000 random 18-yr windows QQQ beat SPY in **100%**, median XIRR **16.6% vs 11.3%** — but
+  that 100% is a **sample-length artifact** (27 yr of history ⇒ only ~9 yr of distinct 18-yr
+  starts, heavily overlapping one macro path). Concentration risk is **not disproven, just
+  untested** here — QQQ's −83% dot-com fall (12.4-yr recovery) sits *inside* every window.
+- Instrument/fee questions are **settled and cheap**: QQQM tracks QQQ to **+0.06%/yr** (≈ its TER
+  edge — free money vs QQQ); the 0.5% Hatch FX fee is a flat 0.5% of terminal wealth (**~0.03%/yr**).
+- The one **real, unavoidable overlay is currency**: unhedged NZDUSD adds ~**12%/yr** of vol; the
+  recent NZD weakness flattered NZD returns (+1.5%/yr *in this window only*) — don't bank on it.
+
+**Wife — NZ S&P 500 PIE, lump + monthly DCA (cash → equities).**
+- Tax is a **fixed left-shift** of the whole net-XIRR distribution (~1.4–2.0%/yr), return-independent.
+  Wife SPY net p50: gross **10.7%** → **PIE @28% 9.2%** → direct FIF @39%+FX 8.5%.
+- The **PIE's edge over a direct hold is modest** (rate cap saves 0.25–0.55%/yr, + kills 0.5% FX
+  + FIF $50k stacking); the tax *level* (~1.4%/yr) is the real cost either way. **Cadence is a
+  wash** (FX fee is per-dollar, not per-trade ⇒ weekly vs monthly differ ~0.03%/yr).
+- The decision that matters is **risk, not fees**: worst 12-mo SPY **−47.4%**, worst peak→trough
+  **−55.2%** (3.4-yr recovery), accumulation balance drawdown **−33.9%** median to **−46.7%**
+  worst-decile. A Term PIE can't lose capital; SPY can halve. Size the lump to survive a halving.
+
+**Cross-cutting methodological wins:** distribution-over-single-date (random windows) is the
+project's core honesty lever; overlays (FX, tax) are *always* labelled layers, never baked in;
+the offline-CSV reference keeps every committed number byte-reproducible; and the engine owns all
+numbers while `build_report.py` only presents them, so the page can't drift.
+
 ## Next session
 
-Sprint 0 is shipped; **Sprint 1 is done** (distribution study + `results/random_windows.md`,
-plus the task-5 CSV data contract `results/{windows,fan}_*.csv`) and the report pipeline
-(`build_report.py` → `docs/index.html`) is in place. Next, in a **fresh session**:
+**Sprints 0–3 are all shipped** — the decision-driving research is done. Remaining work is
+presentation + hosting, not new evidence:
 
-- **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
+- **One-time (still open):** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
   `docs/index.html` goes live; push `main` first.
-- **Sprint 2 is shipped** (baby: QQQM/VOO tracking + NZDUSD overlay + FX-fee drag →
-  `results/sprint2_overlays.md/.png`). Next is **Sprint 3** (wife: after-tax PIE-vs-FIF +
-  fee/cadence) — the remaining decision-driving sprint.
-- Per-sprint contract: drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS` in
-  `build_report.py`, rerun both scripts.
+- **Sprint 4 (deferred, optional):** the richer interactive Plotly dashboard (`results/dashboard.html`)
+  — a *communication* layer that reads the Sprint 1–3 committed CSVs/tables and never re-simulates.
+  Off the critical path; build only if the static `docs/index.html` proves insufficient.
+- Per-sprint contract (if extending): drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS`
+  in `build_report.py`, rerun both scripts (regenerate the committed reference **network-off**).
