@@ -118,7 +118,7 @@ Make the PIE-vs-alternative comparison fair, and settle contribution cadence.
 
 ---
 
-## Sprint 4 — Interactive dashboard  *(deferred; off critical path)*
+## Sprint 4 — Interactive dashboard  ✅ SHIPPED *(communication layer; Sprint 3 still open)*
 
 A **communication / intuition layer**, not new evidence. It *reads* the outputs of Sprints
 1–3 (via the Sprint 1 data contract) and never re-simulates. Built only after the research
@@ -146,6 +146,20 @@ Reject **vectorbt** (now OSS maintenance-mode; engine around a single-path objec
 **Done when:** a committed self-contained `results/dashboard.html` renders all four views with
 network off, and its numbers match the committed `results/` tables/CSVs exactly (no divergent
 recompute). Guardrail: lead with the distribution; the single-path view stays clearly secondary.
+
+**Result** (`build_dashboard.py` → `results/dashboard.html`, copied to `docs/dashboard.html`
+for Pages; section `results/sprint4_dashboard.md` added to the report): all four views ship.
+Key implementation choices — the script is **offline by construction** (reads only the
+committed `results/{windows,fan}_*.csv` + `data/*.csv`, never yfinance), so unlike
+`backtest.py` a live rerun cannot drift it; output is **byte-reproducible** (verified: two
+runs, identical md5; fixed Plotly `div_id`s). Distribution stats in the page are computed
+from the CSVs and tie out to `random_windows.md` exactly (XIRR p10/p50/p90 both scenarios,
+win-rates 100%/96.4%, drawdown p10s). Bear spans (QQQ ≤ −20%, engine's dd definition):
+dot-com −83% 2000-03→2015-02, 2018 −23%, 2020 −29%, 2022 −35%, 2025 −23%. Verified in a
+real browser: all four divs render, only network request is the page itself (self-contained).
+QuantStats skipped — nothing it adds that the four custom views don't. Sprint 4 built ahead
+of Sprint 3 (independent: it consumes the Sprint 1 contract only); when Sprint 3 lands its
+after-tax numbers, extend the dashboard then.
 
 ---
 
@@ -211,7 +225,9 @@ plus the task-5 CSV data contract `results/{windows,fan}_*.csv`) and the report 
 - **One-time:** enable GitHub Pages (Settings → Pages → source `main` / `/docs`) so
   `docs/index.html` goes live; push `main` first.
 - **Sprint 2 is shipped** (baby: QQQM/VOO tracking + NZDUSD overlay + FX-fee drag →
-  `results/sprint2_overlays.md/.png`). Next is **Sprint 3** (wife: after-tax PIE-vs-FIF +
-  fee/cadence) — the remaining decision-driving sprint.
+  `results/sprint2_overlays.md/.png`). **Sprint 4 is shipped** (interactive dashboard →
+  `results/dashboard.html` + `docs/dashboard.html`, built from the Sprint 1 CSV contract).
+  Next is **Sprint 3** (wife: after-tax PIE-vs-FIF + fee/cadence) — the remaining
+  decision-driving sprint; extend the dashboard with its outputs afterwards.
 - Per-sprint contract: drop `results/<name>.md` (+ `.png`), add a line to `SECTIONS` in
   `build_report.py`, rerun both scripts.

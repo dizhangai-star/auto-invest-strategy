@@ -63,7 +63,8 @@ flattering return number.
 ```
 backtest.py        # engine: data load, metrics, XIRR, DCA sims, period-bias, plots
 build_report.py    # stdlib-only: stitch results/*.md + *.png -> docs/index.html (computes no numbers)
-requirements.txt   # pandas, numpy, yfinance, matplotlib
+build_dashboard.py # Plotly dashboard from committed results/*.csv + data/*.csv (offline; re-simulates nothing)
+requirements.txt   # pandas, numpy, yfinance, matplotlib, plotly
 README.md          # run instructions + caveats
 data/              # optional offline CSV fallback (data/SPY.csv, data/QQQ.csv)
 results/           # per-sprint snapshots: <name>.md (numbers + honesty caveats) + <name>.png
@@ -78,6 +79,7 @@ All tunables live in the `CONFIG` block at the top of `backtest.py`.
 pip install -r requirements.txt
 python3 backtest.py          # use python3 — `python` is not on PATH on this machine
 python3 build_report.py      # stitch results/*.md + *.png -> docs/index.html (GitHub Pages)
+python3 build_dashboard.py   # results/dashboard.html (+ docs/ copy) from committed CSVs — no network needed
 ```
 
 `yfinance` needs open internet (works locally; the Claude web sandbox can't reach Yahoo).

@@ -220,3 +220,4 @@ __marimo__/
 # Project-specific
 .DS_Store
 backtest_charts.png
+.playwright-mcp/
