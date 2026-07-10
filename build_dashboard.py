@@ -17,13 +17,14 @@ Run:  python3 build_dashboard.py     (after backtest.py has produced results/)
 Deps: pandas, numpy, plotly
 """
 from __future__ import annotations
+import json
 import shutil
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from backtest import (FX_FEE, WEEKLY_CONTRIB, WIFE_LUMP, WIFE_MONTHLY,
-                      _contribution_dates, simulate_dca, pct)
+from backtest import (BABY_YEARS, FX_FEE, RANDOM_N, WEEKLY_CONTRIB, WIFE_LUMP,
+                      WIFE_MONTHLY, WIFE_YEARS, _contribution_dates, simulate_dca, pct)
 
 OUT = "results/dashboard.html"
 TICKERS = ["QQQ", "SPY"]
@@ -195,6 +196,143 @@ def fig_orders(prices: pd.Series) -> go.Figure:
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 5 — interactive projection calculator.
+#
+# The engine stays the sole source of numbers: results/projection_factors.csv holds
+# per-window linear factors (g0, s) such that simulate_dca's final value is EXACTLY
+#     final = (1 - fx_fee) * (lump * g0 + amount * s)
+# for any (lump, amount, fee). The JS below only takes linear combinations of those
+# factors (ticker blend = fixed contribution split, no rebalancing) and percentiles —
+# it is not a second simulation engine and cannot drift from the committed CSV.
+# Plain template string with __TOKEN__ substitution (an f-string would fight the JS braces).
+# --------------------------------------------------------------------------------------
+_PROJ_TEMPLATE = """
+<div class="warn"><strong>Projection = replaying 1999&ndash;2026 history, not predicting.</strong>
+The ~1,000 windows per horizon are drawn from one 27-yr macro path and overlap heavily &mdash;
+no completed 18-yr window contains a full dot-com-style QQQ round trip. Figures are nominal
+USD, <strong>pre-tax</strong>: Sprint 3 puts PIE/FIF tax at a ~1.4&ndash;2.0%/yr left-shift of
+the whole distribution. Mix = a fixed split of every contribution, held without rebalancing.
+And the end-numbers hide the ride: __DD_NOTE__</div>
+<div class="presets">
+  <button onclick="projPreset('baby')">Baby &mdash; $__BABY_AMT__/wk QQQ, __BABY_YRS__ yr, __BABY_FEE__% FX</button>
+  <button onclick="projPreset('wife')">Wife &mdash; $__WIFE_LUMP_LABEL__ lump + $__WIFE_AMT__/mo SPY, __WIFE_YRS__ yr</button>
+  <button onclick="projPreset('custom')">Custom &mdash; my portfolio (50/50 start)</button>
+</div>
+<div class="projform" id="proj_form">
+  <label>deposit $<input id="proj_amount" type="number" min="0" step="10" value="__BABY_AMT__"></label>
+  <label>every <select id="proj_freq"><option value="W">week</option><option value="MS">month</option></select></label>
+  <label>for <input id="proj_hval" type="number" min="1" step="1" value="__BABY_YRS__">
+    <select id="proj_hunit"><option value="years">years</option><option value="months">months</option><option value="weeks">weeks</option></select></label>
+  <label>lump sum $<input id="proj_lump" type="number" min="0" step="1000" value="0"></label>
+  <label>FX fee <input id="proj_fee" type="number" min="0" max="5" step="0.1" value="__BABY_FEE__">%</label>
+  <label>mix <input id="proj_qqq" type="range" min="0" max="100" step="5" value="100"><span id="proj_qqqlab">100% QQQ / 0% SPY</span></label>
+  <label>assumed <input id="proj_rate" type="number" step="0.5" value="7">%/yr</label>
+</div>
+<div id="proj_out"></div>
+<div id="proj_hist"></div>
+<script>
+const PROJ=__PROJ_JSON__;
+const $p=id=>document.getElementById(id);
+function pctile(a,q){const p=(a.length-1)*q,lo=Math.floor(p),hi=Math.ceil(p);return a[lo]+(a[hi]-a[lo])*(p-lo);}
+function fmt$(x){return "$"+Math.round(x).toLocaleString("en-US");}
+function fvFixed(r,ppy,yrs,amount,lump,fee){
+  const n=Math.round(yrs*ppy),i=Math.pow(1+r,1/ppy)-1;
+  const ann=(Math.abs(i)<1e-12)?n:((Math.pow(1+i,n)-1)/i)*(1+i);
+  return (1-fee)*(lump*Math.pow(1+r,yrs)+amount*ann);
+}
+function impliedRate(target,ppy,yrs,amount,lump,fee){
+  let lo=-0.9,hi=1.0;
+  if(fvFixed(lo,ppy,yrs,amount,lump,fee)>target||fvFixed(hi,ppy,yrs,amount,lump,fee)<target)return null;
+  for(let k=0;k<80;k++){const m=(lo+hi)/2;if(fvFixed(m,ppy,yrs,amount,lump,fee)<target)lo=m;else hi=m;}
+  return (lo+hi)/2;
+}
+function recalcProj(){
+  const amount=+$p("proj_amount").value||0,freq=$p("proj_freq").value;
+  const hv=+$p("proj_hval").value||0,hu=$p("proj_hunit").value;
+  const lump=+$p("proj_lump").value||0,fee=(+$p("proj_fee").value||0)/100;
+  const wq=(+$p("proj_qqq").value)/100,ws=1-wq,rate=(+$p("proj_rate").value||0)/100;
+  $p("proj_qqqlab").textContent=Math.round(wq*100)+"% QQQ / "+Math.round(ws*100)+"% SPY";
+  const yrsRaw=hu==="years"?hv:(hu==="months"?hv/12:hv/52);
+  const yrs=Math.min(18,Math.max(1,Math.round(yrsRaw)));
+  const ppy=freq==="W"?52:12,cell=PROJ[freq][String(yrs)];
+  const N=cell.n.length,finals=new Array(N),invs=new Array(N);
+  for(let i=0;i<N;i++){
+    const g0=wq*cell.QQQ.g0[i]+ws*cell.SPY.g0[i],s=wq*cell.QQQ.s[i]+ws*cell.SPY.s[i];
+    finals[i]=(1-fee)*(lump*g0+amount*s);
+    invs[i]=lump+amount*cell.n[i];
+  }
+  finals.sort((a,b)=>a-b);invs.sort((a,b)=>a-b);
+  const p10=pctile(finals,.1),p50=pctile(finals,.5),p90=pctile(finals,.9),inv=pctile(invs,.5);
+  const fv=fvFixed(rate,ppy,yrs,amount,lump,fee),imp=impliedRate(p50,ppy,yrs,amount,lump,fee);
+  const snap=Math.abs(yrsRaw-yrs)>1e-9?" &mdash; input snapped to the "+yrs+"-yr historical window grid":"";
+  let h='<div class="projstats">'
+    +'<div class="stat">total put in (median window)<b>'+fmt$(inv)+'</b></div>'
+    +'<div class="stat">p10 &mdash; bad decade<b>'+fmt$(p10)+'</b></div>'
+    +'<div class="stat">p50 &mdash; median history<b>'+fmt$(p50)+'</b></div>'
+    +'<div class="stat">p90 &mdash; lucky start<b>'+fmt$(p90)+'</b></div>'
+    +'<div class="stat">p50 multiple<b>'+(p50/inv).toFixed(2)+'x</b></div></div>';
+  h+='<p class="note">Across '+N+' random '+yrs+'-yr historical start dates'+snap
+    +'. Quick check at an <em>assumed</em> '+(rate*100).toFixed(1)+'%/yr constant return: '
+    +'<strong>'+fmt$(fv)+'</strong> (intuition only, not evidence)'
+    +(imp!==null?'; the historical p50 is equivalent to a constant '+(imp*100).toFixed(1)+'%/yr.':'.')
+    +'</p>';
+  if(p10<inv)h+='<p class="projred">p10 &lt; money put in: in at least 1-in-10 historical windows you ended with less than you deposited.</p>';
+  $p("proj_out").innerHTML=h;
+  Plotly.react("proj_hist",
+    [{x:finals,type:"histogram",nbinsx:60,marker:{color:"#2a78d6"},hovertemplate:"$%{x:,.0f}<extra></extra>"}],
+    {margin:{t:30,r:20,b:45,l:55},height:320,showlegend:false,
+     xaxis:{title:{text:"final value ($, nominal USD, pre-tax)"},tickprefix:"$"},
+     yaxis:{title:{text:"windows"}},
+     shapes:[[inv,"#7a7a76","dot"],[p10,"#c0392b","dash"],[p50,"#1a1a1a","solid"],[p90,"#1baf7a","dash"]]
+       .map(v=>({type:"line",x0:v[0],x1:v[0],y0:0,y1:1,yref:"paper",line:{color:v[1],width:1.4,dash:v[2]}})),
+     annotations:[[inv,"put in"],[p10,"p10"],[p50,"p50"],[p90,"p90"]]
+       .map(a=>({x:a[0],y:1.02,yref:"paper",text:a[1],showarrow:false,font:{size:11}}))},
+    {displaylogo:false,responsive:true});
+}
+function projPreset(p){
+  const v={baby:{amount:__BABY_AMT__,freq:"W",hval:__BABY_YRS__,lump:0,fee:__BABY_FEE__,qqq:100},
+           wife:{amount:__WIFE_AMT__,freq:"MS",hval:__WIFE_YRS__,lump:__WIFE_LUMP__,fee:0,qqq:0},
+           custom:{amount:200,freq:"W",hval:10,lump:0,fee:0,qqq:50}}[p];
+  $p("proj_amount").value=v.amount;$p("proj_freq").value=v.freq;$p("proj_hval").value=v.hval;
+  $p("proj_hunit").value="years";$p("proj_lump").value=v.lump;$p("proj_fee").value=v.fee;
+  $p("proj_qqq").value=v.qqq;recalcProj();
+}
+document.querySelectorAll("#proj_form input,#proj_form select").forEach(x=>x.addEventListener("input",recalcProj));
+projPreset("baby");
+</script>
+"""
+
+
+def projection_section() -> str:
+    """Sprint 5 panel: embed the engine's per-window factors + the client-side calculator."""
+    fac = pd.read_csv("results/projection_factors.csv")
+    payload = {"W": {}, "MS": {}}
+    for (freq, years), cell in fac.groupby(["freq", "years"]):
+        payload[freq][str(int(years))] = {
+            "n": cell["n_buys"].astype(int).tolist(),
+            "QQQ": {"g0": cell["g0_QQQ"].tolist(), "s": cell["s_QQQ"].tolist()},
+            "SPY": {"g0": cell["g0_SPY"].tolist(), "s": cell["s_SPY"].tolist()},
+        }
+    dd = {k: pd.read_csv(f"results/windows_{k}.csv")["max_dd"]
+          for k in ("baby_QQQ", "wife_SPY")}
+    dd_note = (f"expect the balance itself to fall ~{-dd['baby_QQQ'].median():.0%} in the median "
+               f"18-yr QQQ window (~{-dd['baby_QQQ'].quantile(0.1):.0%} worst decile), "
+               f"~{-dd['wife_SPY'].median():.0%} median for the wife's lump+monthly SPY — "
+               f"see views 1 and 5.")
+    html = _PROJ_TEMPLATE.replace("__PROJ_JSON__", json.dumps(payload, separators=(",", ":")))
+    for token, value in {
+        "__DD_NOTE__": dd_note,
+        "__BABY_AMT__": f"{WEEKLY_CONTRIB:.0f}", "__BABY_YRS__": str(BABY_YEARS),
+        "__BABY_FEE__": f"{FX_FEE * 100:g}",
+        "__WIFE_AMT__": f"{WIFE_MONTHLY:.0f}", "__WIFE_YRS__": str(WIFE_YEARS),
+        "__WIFE_LUMP_LABEL__": f"{WIFE_LUMP:,.0f}",   # button text (comma-grouped)
+        "__WIFE_LUMP__": f"{WIFE_LUMP:.0f}",          # JS numeric literal (no comma)
+    }.items():
+        html = html.replace(token, value)
+    return html
+
+
+# --------------------------------------------------------------------------------------
 CSS = """
 * { box-sizing: border-box; }
 body { font: 16px/1.6 -apple-system, system-ui, sans-serif; color: #1a1a1a; background: #fcfcfb;
@@ -205,6 +343,16 @@ p { color: #333; max-width: 62rem; }
 .note { color: #52514e; font-size: .9rem; }
 .warn { background: #fff6e8; border-left: 3px solid #eda100; padding: .5rem .8rem; font-size: .9rem; }
 .foot { color: #666; font-size: .85rem; margin-top: 4rem; border-top: 1px solid #ddd; padding-top: 1rem; }
+.projform { display: flex; flex-wrap: wrap; gap: .5rem 1.3rem; align-items: center;
+            margin: .8rem 0 .4rem; font-size: .92rem; }
+.projform label { display: flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.projform input[type=number] { width: 6.2rem; padding: .15rem .3rem; }
+.presets button { margin: 0 .5rem .4rem 0; padding: .3rem .9rem; cursor: pointer;
+                  border: 1px solid #bbb; border-radius: 4px; background: #f4f4f2; }
+.projstats { display: flex; flex-wrap: wrap; gap: 1.1rem 2.2rem; margin: .8rem 0 .2rem; }
+.projstats .stat b { font-size: 1.3rem; display: block; }
+.projstats .stat { font-size: .85rem; color: #52514e; }
+.projred { color: #c0392b; font-weight: 600; }
 """
 
 
@@ -212,6 +360,7 @@ def build() -> str:
     prices = pd.concat([load_offline(t) for t in TICKERS], axis=1, keys=TICKERS).dropna()
     f1, dist_notes = fig_distribution()
     f2 = fig_fan()
+    proj_html = projection_section()
     f3, spans = fig_cycles(prices)
     f4 = fig_orders(prices["QQQ"])
     worst = min(spans, key=lambda s: s["depth"])
@@ -237,7 +386,7 @@ re-simulates nothing, so these numbers match <code>results/random_windows.md</co
 artifact</strong> — ~27 yr of history means the 18-yr "windows" heavily overlap one macro
 path in which Nasdaq concentration was never punished end-to-end. Treat concentration risk
 as <em>not disproven</em>, not absent. Both scenarios put a ~40–47% balance drawdown on the
-table (view 1 notes, view 3 spans).</div>
+table (view 1 notes, view 4 spans).</div>
 
 <h2>1 · Outcome distribution (the headline view)</h2>
 <p class="note">{dist_notes}</p>
@@ -250,19 +399,28 @@ terminal p50 sits a hair below the windows-CSV multiple p50 by design (per-step 
 percentile, truncated to the shortest window) — see SPRINT_PLAN Sprint 1 note.</p>
 {div(f2, 2)}
 
-<h2>3 · Bull/bear cycles the windows are sampling from</h2>
+<h2>3 · Projection calculator — what the window distribution says about <em>your</em> plan</h2>
+<p class="note">Deposit, cadence, horizon, lump, fee and QQQ/SPY mix are recomputed
+client-side from the committed <code>results/projection_factors.csv</code> — the engine's
+per-window linear factors over the same {RANDOM_N:,} random start dates (seed 42) as
+view 1, so the Baby preset reproduces <code>results/random_windows.md</code> exactly. The
+headline is the p10/p50/p90 <strong>range</strong>; the assumed-rate figure is a labelled
+intuition check, not evidence.</p>
+{proj_html}
+
+<h2>4 · Bull/bear cycles the windows are sampling from</h2>
 <p class="note">Growth of $1 (log). Shaded spans = QQQ bear episodes (any fall below
 {BEAR_THRESHOLD:.0%} from a running peak, shaded peak → recovery), computed with the same
 drawdown definition as the engine. The {worst['depth']:.0%} dot-com span
 ({worst['start'].date()} → {worst['end'].date()}) is the risk the randomized windows
 under-sample — it appears in full in no completed 18-yr window.</p>
-{div(f3, 3)}
+{div(f3, 4)}
 
-<h2>4 · Orders on a chart — ONE illustrative path (not evidence)</h2>
+<h2>5 · Orders on a chart — ONE illustrative path (not evidence)</h2>
 <p class="note"><strong>This is a single start date</strong> — exactly what the rest of this
 page exists to warn against. It is here only to show the mechanics of weekly DCA (buys land
 in crashes too) on the full-history QQQ path. Judge outcomes by views 1–2, not this.</p>
-{div(f4, 4)}
+{div(f4, 5)}
 
 <p class="foot">Generated by <code>python3 build_dashboard.py</code> — reads committed
 <code>results/*.csv</code> + <code>data/*.csv</code>, computes no new evidence. Plotly

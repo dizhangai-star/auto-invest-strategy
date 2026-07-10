@@ -271,15 +271,46 @@ project's core honesty lever; overlays (FX, tax) are *always* labelled layers, n
 the offline-CSV reference keeps every committed number byte-reproducible; and the engine owns all
 numbers while `build_report.py` only presents them, so the page can't drift.
 
+## Sprint 5 — Projection calculator  ✅ SHIPPED *(dashboard view 3; engine stays sole source of numbers)*
+
+Answers the forward question ("deposit $X weekly/monthly for N periods → what's the pot?")
+for Baby, Wife, and a custom QQQ/SPY mix, as a **p10/p50/p90 range** from the Sprint 1
+random-window machinery — plus a clearly-labelled assumed-rate FV as an intuition check.
+
+**Design:** `simulate_dca`'s final value is exactly linear in (lump, amount):
+`final = (1−fee)·(lump·g0 + amount·s)` with `g0 = P(end)/P(first buy)`,
+`s = P(end)·Σ 1/P(buyᵢ)`. `backtest.py` persists per-window `(g0, s, n_buys)` over
+{SPY,QQQ} × {W,MS} × {1..18 yr} × 1,000 windows (seed 42, starts shared across tickers) →
+`results/projection_factors.csv` (36,000 rows); `build_dashboard.py` embeds it as JSON and
+the panel's JS only does linear combinations + percentiles. Ticker mix = fixed contribution
+split, never rebalanced. Week/month horizons snap to the nearest year on the grid (labelled).
+
+**Rejected alternative** (documented so it isn't re-litigated): embedding price arrays +
+reciprocal prefix sums for arbitrary fractional horizons — smaller payload, but it makes JS
+a second simulation engine with real drift edge cases (partial resample buckets, end-of-window
+valuation) vs the "dashboard re-simulates nothing" rule.
+
+**Result:** built-in `np.isclose` contract check per grid cell at regeneration; factor formula
+matches `simulate_dca` from the committed CSV to ~7×10⁻⁷ (= `%.6g` rounding); Baby preset ties
+out to `random_windows.md` exactly (3.52x/5.35x/6.71x, implied 16.6%/yr = XIRR p50); Wife
+preset likewise (1.15x/2.00x/2.61x); a $200/wk 10-yr 50/50 blend hand-checks against a direct
+`simulate_dca` loop to 1×10⁻⁷. Both artifacts byte-reproducible (two regenerations, identical
+md5); dashboard now 7.5 MB, still fully offline. Verified in a real browser: presets, snap
+note, and the red "p10 < money put in" warning all fire. Honesty caveats sit inside the panel
+itself (one macro path, pre-tax, drawdowns en route). See `results/sprint5_projection.md`.
+
 ## Next session
 
-**All planned sprints (0–4) are shipped and the site is live.** Nothing required remains.
+**All planned sprints (0–5) are shipped and the site is live.** Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
   https://dizhangai-star.github.io/auto-invest-strategy/ (verified 2026-07 via the GitHub API).
 - **Sprint 4 is shipped** (interactive Plotly dashboard → `results/dashboard.html` +
   `docs/dashboard.html`, `python3 build_dashboard.py` — reads the Sprint 1 CSV contract +
   offline `data/*.csv`, never re-simulates).
+- **Sprint 5 is shipped** (projection calculator, dashboard view 3 — client-side p10/p50/p90
+  projections from `results/projection_factors.csv`; the Custom preset takes the user's own
+  portfolio numbers whenever provided).
 - **Remaining candidate work (optional, not committed):**
   - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
     toggle) if the static section proves insufficient.
