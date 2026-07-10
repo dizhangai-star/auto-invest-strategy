@@ -52,6 +52,11 @@ SEED = 42                        # default RNG seed (override with --seed)
 TWINS = [("QQQM", "QQQ"), ("VOO", "SPY")]   # (cheaper share class, its long-history twin)
 FX_TICKER = "NZDUSD=X"                        # USD per 1 NZD; offline: data/NZDUSD=X.csv
 
+# Sprint 3 — after-tax layer + cadence sensitivity for the wife (SPY/PIE) decision
+FDR_RATE = 0.05                  # FIF/PIE "fair dividend rate": deemed 5% of opening value is income
+PIE_PIR = 0.28                   # PIE prescribed-investor-rate cap (no FIF, no FX)
+MARGINAL_RATES = [0.33, 0.39]    # a direct FIF hold is taxed at the investor's marginal rate
+
 TRADING_DAYS = 252
 
 
@@ -523,6 +528,112 @@ def make_sprint2_plot():
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 3 — after-tax layer + cadence sensitivity for the wife (SPY / NZ PIE) decision
+#   1. After-tax overlay: PIE (28% PIR cap, no FIF/FX) vs a direct FIF hold under FDR.
+#   2. Cadence: weekly vs monthly DCA — does buy frequency change the fee/return?
+#   3. The wife's real downside: cash -> equities is a change in RISK LEVEL, not a yield swap.
+# --------------------------------------------------------------------------------------
+def apply_asset_drag(prices, annual_rate: float):
+    """Deflate a total-return series (or frame) by a continuous asset-based charge of
+    `annual_rate`/yr.
+
+    NZ FDR tax is EXACTLY this: taxable income = 5% of opening balance, taxed at your rate,
+    so the annual charge is rate x 5% of value — an asset-based fee, independent of the
+    realized return. Deflating by exp(-rate * t) applies the drag over each contribution's
+    actual holding period: the absolute deflation level cancels in every buy's growth ratio,
+    so it is not applied retroactively. Feed the result straight into simulate_dca to read
+    the net-of-tax XIRR."""
+    years = np.asarray((prices.index - prices.index[0]).days / 365.25)
+    return prices.mul(np.exp(-annual_rate * years), axis=0)
+
+
+def print_after_tax(prices: pd.DataFrame):
+    print("\n=== Sprint 3 · Task 1 — after-tax: wife's PIE (28% cap) vs a direct FIF hold (SPY) ===")
+    print("  FDR: taxable income = 5% of opening balance/yr, taxed at your rate => a FIXED asset")
+    print("  drag of rate x 5%/yr, independent of the actual return. Applied to the 10-yr windows:")
+    variants = [("gross (pre-tax)",       0.0,             0.0),
+                ("PIE  @28% (no FIF/FX)", PIE_PIR * FDR_RATE, 0.0)]
+    variants += [(f"FIF  @{int(m*100)}% +0.5% FX", m * FDR_RATE, FX_FEE) for m in MARGINAL_RATES]
+    for label, drag, fx in variants:
+        adj = apply_asset_drag(prices, drag)
+        df = simulate_random_windows(adj, "SPY", WIFE_YEARS, "MS", RANDOM_N, WIFE_MONTHLY,
+                                     fx_fee=fx, lump=WIFE_LUMP, seed=SEED)
+        q = df["xirr"].quantile([0.1, 0.5, 0.9])
+        tag = "" if drag == 0 else f"   (tax drag {pct(drag, 2)}/yr)"
+        print(f"  {label:22s} net XIRR  p10 {pct(q[0.1])}  p50 {pct(q[0.5])}  p90 {pct(q[0.9])}{tag}")
+    print(f"  PIE saves the rate gap x 5%: {pct((0.33 - PIE_PIR) * FDR_RATE, 2)}/yr (vs 33%) to "
+          f"{pct((0.39 - PIE_PIR) * FDR_RATE, 2)}/yr (vs 39%), PLUS the 0.5% FX and FIF $50k stacking.")
+    print("  (FDR taxes a deemed 5%, not your gain — light in a strong market, still due in a flat")
+    print("   year. A direct holder may elect the CV method to pay ~0 in a loss year; a PIE cannot.)")
+
+
+def print_cadence(prices: pd.DataFrame):
+    print("\n=== Sprint 3 · Task 2 — cadence: weekly vs monthly DCA (same $/yr) ===")
+    print("  The Hatch FX fee is 0.5% PER DOLLAR converted, not per trade, so cadence does NOT")
+    print("  change total FX cost. Only difference is timing (weekly deploys ~2wk sooner on avg).")
+    annual = WEEKLY_CONTRIB * 52
+    for t in prices.columns:
+        s = prices[t].dropna()
+        w = simulate_dca(s, WEEKLY_CONTRIB, "W", fx_fee=FX_FEE)
+        m = simulate_dca(s, annual / 12, "MS", fx_fee=FX_FEE)
+        print(f"  {t}: weekly XIRR {pct(w.xirr)} ({w.multiple:.2f}x)  |  "
+              f"monthly XIRR {pct(m.xirr)} ({m.multiple:.2f}x)  |  "
+              f"weekly edge {pct(w.xirr - m.xirr, 3)}/yr")
+    print("  (Near-identical: pick the cadence that fits your cashflow — fees don't decide it.)")
+
+
+def print_wife_downside(prices: pd.DataFrame):
+    print("\n=== Sprint 3 · Task 3 — the wife's real downside (cash -> equities, not a yield swap) ===")
+    spy = prices["SPY"].dropna()
+    roll = spy / spy.shift(TRADING_DAYS) - 1        # rolling 12-mo total return
+    worst, worst_end = roll.min(), roll.idxmin()
+    dd = max_drawdown(spy)
+    wdf = simulate_random_windows(prices, "SPY", WIFE_YEARS, "MS", RANDOM_N, WIFE_MONTHLY,
+                                  fx_fee=0.0, lump=WIFE_LUMP, seed=SEED)
+    mdd = wdf["max_dd"].quantile([0.5, 0.1])
+    print(f"  Lump-sum sequence risk: worst 12-mo SPY total return {pct(worst)} (to {worst_end.date()}).")
+    print(f"    A ${WIFE_LUMP:,.0f} lump entering just before that = ${WIFE_LUMP*(1+worst):,.0f} "
+          f"a year on.")
+    print(f"  Worst peak->trough (buy & hold): {pct(dd['max_dd'])} ({dd['peak']} -> {dd['trough']}), "
+          f"{dd['recovery_years']:.1f}yr to recover.")
+    print(f"  Over the 10-yr accumulation windows the BALANCE fell {pct(mdd[0.5])} (median window) "
+          f"to {pct(mdd[0.1])} (worst decile) at its trough.")
+    print("  A Term PIE cannot lose your capital; SPY can halve. The equity premium is the pay for")
+    print("  that risk — real, but not free. This is a change in RISK LEVEL, state it plainly.")
+
+
+def make_sprint3_plot(prices: pd.DataFrame):
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        print(f"[plots] sprint3 plot skipped: {e}", file=sys.stderr)
+        return
+    fig, ax = plt.subplots(2, 1, figsize=(10, 9))
+    for label, drag in [("gross (pre-tax)", 0.0), ("PIE @28%", PIE_PIR * FDR_RATE),
+                        ("FIF @39%", 0.39 * FDR_RATE)]:
+        adj = apply_asset_drag(prices, drag)
+        x = simulate_random_windows(adj, "SPY", WIFE_YEARS, "MS", RANDOM_N, WIFE_MONTHLY,
+                                    fx_fee=0.0, lump=WIFE_LUMP, seed=SEED)["xirr"].dropna() * 100
+        ax[0].hist(x, bins=40, alpha=0.5, label=f"{label} (med {x.median():.1f}%)")
+        ax[0].axvline(x.median(), linestyle="--", linewidth=1)
+    ax[0].set_title("Wife SPY: net XIRR distribution shifts left with tax (10-yr windows)")
+    ax[0].set_xlabel("annualized net XIRR (%)"); ax[0].set_ylabel("windows"); ax[0].legend()
+
+    spy = prices["SPY"].dropna()
+    roll = (spy / spy.shift(TRADING_DAYS) - 1) * 100
+    roll.plot(ax=ax[1], color="#333", linewidth=0.8)
+    ax[1].fill_between(roll.index, roll.values, 0, where=(roll.values < 0), alpha=0.3, color="red")
+    ax[1].axhline(0, color="k", linewidth=0.6)
+    ax[1].set_title(f"SPY rolling 12-mo total return — the cash->equities downside (worst {roll.min():.0f}%)")
+    ax[1].set_ylabel("12-mo return (%)")
+    fig.tight_layout()
+    fig.savefig("results/sprint3_tax_cadence.png", dpi=120)
+    print("[plots] saved results/sprint3_tax_cadence.png")
+
+
+# --------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="ETF backtest & DCA distribution study")
     ap.add_argument("--seed", type=int, default=SEED, help="RNG seed for random windows")
@@ -551,10 +662,15 @@ def main():
     print_nzd_overlay()
     print_fx_fee_drag()
 
+    print_after_tax(prices)
+    print_cadence(prices)
+    print_wife_downside(prices)
+
     if SAVE_PLOTS:
         make_plots(prices)
         make_random_plots(baby, wife)
         make_sprint2_plot()
+        make_sprint3_plot(prices)
     print("\nDone. Edit the CONFIG block at the top to change amounts, tickers, or dates.")
 
 
