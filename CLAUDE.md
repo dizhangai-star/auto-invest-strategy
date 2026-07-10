@@ -95,17 +95,19 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 
 ## Out of scope for now (flagged, not hidden)
 
-- Currency overlay (NZD/USD) — real extra variance for the baby's US ETF.
-- Tax simulation (PIE 28% vs FIF FDR) — currently pre-tax.
-- Sequence-of-returns / withdrawal phase — this is accumulation only.
+- Sequence-of-returns / withdrawal phase — this is accumulation only. Becomes relevant
+  within ~5 yr of the baby's 18-yr horizon.
 
-## Roadmap (rough priority)
+## Roadmap — ✅ all shipped (see SPRINT_PLAN.md for results)
 
-1. Randomized-window study → outcome distributions (highest value; do first).
-2. Add QQQM + VOO to confirm cheaper share classes track their twins.
-3. NZDUSD overlay for the baby scenario.
-4. After-tax layer: PIE 28% vs FIF FDR, so wife's PIE vs a hypothetical direct-hold is fair.
-5. Fee sensitivity: weekly vs monthly DCA (per-contribution FX vs fewer, larger buys).
+1. ✅ Randomized-window study → outcome distributions (Sprint 1).
+2. ✅ QQQM + VOO tracking check (Sprint 2 — QQQM ahead by ≈ its TER edge; use QQQM).
+3. ✅ NZDUSD overlay for the baby scenario (Sprint 2).
+4. ✅ After-tax layer: PIE 28% vs FIF FDR (Sprint 3).
+5. ✅ Fee sensitivity: weekly vs monthly DCA (Sprint 3 — a wash, ~0.03%/yr).
+
+Optional remaining candidate: add Sprint 3's after-tax overlay to the interactive
+dashboard if the static report section proves insufficient.
 
 ## Working style
 
