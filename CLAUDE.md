@@ -63,11 +63,13 @@ flattering return number.
 ```
 backtest.py        # engine: data load, metrics, XIRR, DCA sims, period-bias, plots
 build_report.py    # stdlib-only: stitch results/*.md + *.png -> docs/index.html (computes no numbers)
-build_dashboard.py # Plotly dashboard from committed results/*.csv + data/*.csv (offline; re-simulates nothing)
+build_dashboard.py # Plotly dashboard from committed results/*.csv + data/*.csv (offline; re-simulates
+                   #   nothing — calculator JS only linearly combines committed factors, never simulates)
 requirements.txt   # pandas, numpy, yfinance, matplotlib, plotly
 README.md          # run instructions + caveats
 data/              # optional offline CSV fallback (data/SPY.csv, data/QQQ.csv)
-results/           # per-sprint snapshots: <name>.md (numbers + honesty caveats) + <name>.png
+results/           # per-sprint snapshots (<name>.md + .png) + committed dashboard data-contract
+                   #   CSVs (windows_*, fan_*, projection_factors.csv) — regenerate network-off
 docs/              # generated index.html for GitHub Pages (source: main /docs) — do not hand-edit
 ```
 
@@ -87,6 +89,9 @@ python3 build_dashboard.py   # results/dashboard.html (+ docs/ copy) from commit
 To verify the offline CSV fallback reproduces `results/baseline.md` (no network): stub
 `yfinance` so `yf.download` raises, which forces the `data/*.csv` branch in `load_prices`.
 
+To verify `dashboard.html` in a browser tool: serve it (`python3 -m http.server` in
+`results/`) — Playwright/preview tools block `file://` URLs.
+
 **Reproducibility — regenerate committed reference artifacts (`results/*.md`, `*.csv`) with
 the network OFF.** Live yfinance re-adjusts adjusted-close between calls, so same-seed runs
 drift (same date range, subtly different numbers) — not byte-reproducible. The committed
@@ -95,17 +100,15 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 
 ## Out of scope for now (flagged, not hidden)
 
-- Currency overlay (NZD/USD) — real extra variance for the baby's US ETF.
-- Tax simulation (PIE 28% vs FIF FDR) — currently pre-tax.
 - Sequence-of-returns / withdrawal phase — this is accumulation only.
+  (Currency and tax overlays shipped in Sprints 2–3 as labelled layers; base sims stay USD pre-tax.)
 
-## Roadmap (rough priority)
+## Status (detail in SPRINT_PLAN.md)
 
-1. Randomized-window study → outcome distributions (highest value; do first).
-2. Add QQQM + VOO to confirm cheaper share classes track their twins.
-3. NZDUSD overlay for the baby scenario.
-4. After-tax layer: PIE 28% vs FIF FDR, so wife's PIE vs a hypothetical direct-hold is fair.
-5. Fee sensitivity: weekly vs monthly DCA (per-contribution FX vs fewer, larger buys).
+Sprints 0–5 all shipped: randomized-window distributions, QQQM/VOO twins, NZDUSD overlay,
+after-tax PIE-vs-FIF layer, cadence sensitivity, dashboard, and the projection calculator
+(dashboard view 3, client-side p10/p50/p90 from `results/projection_factors.csv`).
+Open: user's own-portfolio numbers for the calculator's Custom preset.
 
 ## Working style
 

@@ -57,6 +57,9 @@ FDR_RATE = 0.05                  # FIF/PIE "fair dividend rate": deemed 5% of op
 PIE_PIR = 0.28                   # PIE prescribed-investor-rate cap (no FIF, no FX)
 MARGINAL_RATES = [0.33, 0.39]    # a direct FIF hold is taxed at the investor's marginal rate
 
+# Sprint 5 — projection factor grid for the dashboard's client-side calculator
+PROJ_HORIZON_YEARS = range(1, 19)   # 1..18-yr windows, both cadences, RANDOM_N windows each
+
 TRADING_DAYS = 252
 
 
@@ -331,6 +334,70 @@ def persist_window_data(prices: pd.DataFrame, scenario: str, years: int, freq: s
         })
         fan.to_csv(f"{outdir}/fan_{scenario}_{t}.csv", index=False)
     print(f"[data] wrote results/windows_{scenario}_*.csv + fan_{scenario}_*.csv")
+
+
+# --------------------------------------------------------------------------------------
+# Sprint 5 — projection factor grid (client-side calculator data contract)
+#
+# The dashboard's projection calculator recomputes the outcome distribution for ARBITRARY
+# inputs (amount, lump, fee, ticker weights) without re-running Python. simulate_dca's
+# final value is exactly linear in (lump, amount) for a fixed window/cadence/ticker:
+#     final = (1 - fx_fee) * [ lump * g0 + amount * s ]
+#     g0 = P(end) / P(first buy)          s = P(end) * sum_i 1 / P(buy_i)
+# so we persist per-window (g0, s, n_buys) over a horizons x cadence grid; the dashboard
+# JS only takes linear combinations + percentiles — the engine stays the sole source of
+# numbers. Same seed and start-sampling as Sprint 1, so the calculator's Baby preset
+# replays the exact windows behind results/windows_baby_QQQ.csv.
+# --------------------------------------------------------------------------------------
+def projection_factors(prices: pd.DataFrame, years: int, freq: str,
+                       n: int = RANDOM_N, seed: int = SEED) -> pd.DataFrame:
+    """Per-window linear factors (g0, s) per ticker + shared n_buys, for N random
+    `years`-long windows. Starts are sampled once on the aligned frame, so they are
+    shared across tickers — a weight-blend of finals stays correlation-preserving."""
+    rows = []
+    for st in sample_start_dates(prices.index, years, n, seed):
+        window = prices.loc[st:st + pd.DateOffset(years=years)]
+        if len(window) < 50:
+            continue
+        buys = window.resample(freq).first().dropna()   # _contribution_dates, both columns
+        end_px = window.iloc[-1]
+        row = {"start": st.date(), "end": window.index[-1].date(), "n_buys": len(buys)}
+        for t in prices.columns:
+            row[f"g0_{t}"] = end_px[t] / buys[t].iloc[0]
+            row[f"s_{t}"] = end_px[t] * (1.0 / buys[t]).sum()
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _check_factor_contract(prices: pd.DataFrame, factors: pd.DataFrame,
+                           years: int, freq: str):
+    """The factor formula must reproduce simulate_dca's final_value exactly — one window
+    per grid cell, one lump and one no-lump case. Fails loudly on any drift."""
+    row = factors.iloc[0]
+    st = pd.Timestamp(row["start"])
+    cases = [(prices.columns[0], 250.0, 10000.0), (prices.columns[-1], 100.0, 0.0)]
+    for t, amount, lump in cases:
+        window = prices[t].loc[st:st + pd.DateOffset(years=years)]
+        ref = simulate_dca(window, amount, freq, fx_fee=FX_FEE, lump=lump).final_value
+        via = (1 - FX_FEE) * (lump * row[f"g0_{t}"] + amount * row[f"s_{t}"])
+        assert np.isclose(ref, via), f"factor contract drift: {freq} {years}y {t}: {ref} != {via}"
+
+
+def persist_projection_factors(prices: pd.DataFrame, horizons=PROJ_HORIZON_YEARS,
+                               n: int = RANDOM_N, seed: int = SEED,
+                               outdir: str = "results"):
+    frames = []
+    for years in horizons:
+        for freq in ("W", "MS"):
+            f = projection_factors(prices, years, freq, n=n, seed=seed)
+            _check_factor_contract(prices, f, years, freq)
+            f.insert(0, "freq", freq)
+            f.insert(1, "years", years)
+            frames.append(f)
+    out = pd.concat(frames, ignore_index=True)
+    out.to_csv(f"{outdir}/projection_factors.csv", index=False, float_format="%.6g")
+    print(f"[data] wrote {outdir}/projection_factors.csv "
+          f"({len(out)} rows: {len(list(horizons))} horizons x W/MS, n={n} windows each)")
 
 
 # --------------------------------------------------------------------------------------
@@ -657,6 +724,7 @@ def main():
                         fx_fee=FX_FEE, lump=0.0, n=args.n, seed=args.seed)
     persist_window_data(prices, "wife", WIFE_YEARS, "MS", WIFE_MONTHLY,
                         fx_fee=0.0, lump=WIFE_LUMP, n=args.n, seed=args.seed)
+    persist_projection_factors(prices, n=args.n, seed=args.seed)
 
     print_twins(TWINS)
     print_nzd_overlay()
