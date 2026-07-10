@@ -14,7 +14,8 @@ python build_dashboard.py    # interactive Plotly dashboard -> results/dashboard
                              # (reads the committed results/*.csv + data/*.csv; no network)
 ```
 
-The dashboard includes an **interactive projection calculator** (view 3): deposit amount,
+The dashboard is a left-sidebar tabbed page (one view at a time; hash-routed, so tabs are
+bookmarkable). It includes an **interactive projection calculator** (its own tab): deposit amount,
 cadence, horizon, lump, FX fee and QQQ/SPY mix are recomputed client-side from the committed
 `results/projection_factors.csv` (per-window linear factors from the engine) — p10/p50/p90
 final values across 1,000 historical start dates, never a single flattering number.
