@@ -329,9 +329,42 @@ panel: each year's percentiles come from independent windows — the p50 line is
 anyone rode; a true within-window trajectory was again rejected (would need per-step engine
 data and make the JS a second simulator). See `results/sprint6_projection_fan.md`.
 
+## Sprint 7 — Real portfolio vs simulated SPY/QQQ DCA  ✅ SHIPPED
+
+Validation of the user's real track record: NZ$90,000 deposited 2019-02-25 → 2024-10-11,
+actually worth US$82,740.04 on 2026-07-10 — vs the same money as an even weekly DCA into
+SPY/QQQ (NZD→USD at weekly spot, 0% FX fee to match real IBKR-scale costs, buys at the
+engine's standard first-trading-day close), held after the last deposit.
+
+**Tasks**
+1. Extend `data/*.csv` through 2026-07-10 (append-only; fresh-pull overlap must match
+   committed history exactly) → verify: `git diff` shows only appended rows; offline rerun
+   byte-stable. *(NZDUSD=X failed the overlap guardrail — Yahoo FX closes drift ~0.4% —
+   left untouched; the engine ffills FX so 07-09 covers the 07-10 conversion.)*
+2. Engine: `simulate_nzd_dca_hold` (accumulate-then-hold, which `simulate_dca` can't
+   express) + `even_nzd_schedule` (schedule-shaped: a real deposit CSV can drop in later)
+   → verify: 294 buys within the window, NZD sums to 90,000, invested flat after last
+   deposit, curve endpoint == summary final.
+3. Data contract: `results/real_vs_dca_timeseries.csv` + `real_vs_dca_summary.csv`
+   (REAL row = actual value on the same assumed cashflows → **approximate** XIRR).
+4. Dashboard tab **My portfolio vs DCA** (`#real`): value-vs-time chart (sim SPY/QQQ,
+   invested-cum, deposits-stop vline, actual-value marker) + comparison table, reading
+   only the committed CSVs → verify: real browser, tab renders, other tabs unaffected.
+5. `results/sprint7_real_vs_dca.md` + `SECTIONS` line in `build_report.py`.
+
+**Done when:** the dashboard shows the comparison from committed CSVs only, with the
+even-split/hindsight/approx-XIRR caveats stated on the panel.
+
+**Result** *(reproduce: `python3 backtest.py && python3 build_report.py &&
+python3 build_dashboard.py`, network off)*: even weekly DCA on the same deposits
+(US$58,205 deployed) would have reached **$122,961 (SPY, 2.11x, 16.8% XIRR)** or
+**$149,994 (QQQ, 2.58x, 21.5%)** vs the actual **$82,740 (1.42x, ~7.8% approx)** —
+a ~9–14 %/yr money-weighted gap. Honesty framing in `results/sprint7_real_vs_dca.md`:
+even-split approximation, hindsight benchmark choice, single-end-point actual path.
+
 ## Next session
 
-**All planned sprints (0–6, plus the 5b layout pass) are shipped and the site is live.**
+**All planned sprints (0–7, plus the 5b layout pass) are shipped and the site is live.**
 Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at

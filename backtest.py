@@ -60,6 +60,14 @@ MARGINAL_RATES = [0.33, 0.39]    # a direct FIF hold is taxed at the investor's 
 # Sprint 5 — projection factor grid for the dashboard's client-side calculator
 PROJ_HORIZON_YEARS = range(1, 19)   # 1..18-yr windows, both cadences, RANDOM_N windows each
 
+# Sprint 7 — real-portfolio validation: the user's actual NZD deposits vs a weekly DCA
+REAL_DEPOSIT_TOTAL_NZD = 90_000.0   # total deposited (NZD), modelled as an even weekly split
+REAL_DEPOSIT_START = "2019-02-25"   # first real deposit
+REAL_DEPOSIT_END = "2024-10-11"     # last real deposit; the sim holds (no buys) after this
+REAL_PORTFOLIO_USD = 82_740.04      # actual portfolio value at REAL_PORTFOLIO_ASOF
+REAL_PORTFOLIO_ASOF = "2026-07-10"  # the Friday close the actual value was read at
+REAL_FX_FEE = 0.0                   # user's real FX cost is IBKR-scale (~0), not Hatch's 0.5%
+
 TRADING_DAYS = 252
 
 
@@ -701,6 +709,158 @@ def make_sprint3_plot(prices: pd.DataFrame):
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 7 — real-portfolio validation: what would the SAME NZD deposits, drip-fed weekly
+# into SPY or QQQ, be worth today?
+#
+# Deposits ran REAL_DEPOSIT_START → REAL_DEPOSIT_END (NZ$90k total, modelled as an even
+# weekly split); after the last deposit the sim just holds to the end of the data — the
+# accumulate-then-hold shape simulate_dca cannot express. Each week's NZD converts to USD
+# at that day's spot (NZDUSD=X, ffilled) with the user's real FX cost (~0 on IBKR), then
+# buys at the week's first trading-day adjusted close — the engine's standard weekly
+# convention. The REAL row reuses the same assumed cashflows with the actual terminal
+# value, so its XIRR is APPROXIMATE (the real deposits were lumpy, not even).
+# --------------------------------------------------------------------------------------
+@dataclass
+class NzdHoldResult:
+    n_buys: int
+    invested_nzd: float
+    invested_usd: float
+    final_usd: float
+    final_nzd: float
+    multiple_usd: float      # final_usd / invested_usd
+    multiple_nzd: float      # final_nzd / invested_nzd
+    xirr_usd: float
+    curve: pd.DataFrame      # weekly: invested_nzd_cum, invested_usd_cum, value_usd
+    cf_usd: list             # the USD contribution cashflows (no terminal) + dates,
+    cf_dates: list           # reusable for the REAL row's approximate XIRR
+
+
+def _weekly_first_days(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """First trading day of each week. Unlike _contribution_dates (whose index is the
+    resample bin boundary, a Sunday), these are actual dates present in `index`, so they
+    can price a buy via .loc."""
+    return pd.DatetimeIndex(index.to_series().resample("W").first().dropna().values)
+
+
+def even_nzd_schedule(index: pd.DatetimeIndex, contrib_start: str, contrib_end: str,
+                      total_nzd: float) -> list:
+    """Even weekly NZD split over the deposit window, dated on the engine's weekly grid
+    (first trading day of each week). Swap for a real (date, nzd) deposit schedule from
+    broker statements when available — everything downstream is schedule-shaped."""
+    days = _weekly_first_days(index[(index >= contrib_start) & (index <= contrib_end)])
+    return [(dt, total_nzd / len(days)) for dt in days]
+
+
+def simulate_nzd_dca_hold(prices: pd.Series, fx: pd.Series, schedule: list,
+                          fx_fee: float = 0.0) -> NzdHoldResult:
+    """Contribute NZD per `schedule` (converted to USD at each date's spot, fx = USD per
+    1 NZD), then hold with no further buys to the end of `prices`."""
+    units = inv_nzd = inv_usd = 0.0
+    cf_usd, cf_dates, buy_rows = [], [], []
+    for dt, nzd in schedule:
+        rate = fx.reindex([dt], method="ffill").iloc[0]
+        usd = nzd * rate * (1 - fx_fee)
+        units += usd / prices.loc[dt]
+        inv_nzd += nzd
+        inv_usd += usd
+        cf_usd.append(-usd); cf_dates.append(dt)
+        buy_rows.append((dt, inv_nzd, inv_usd, units))
+    state = pd.DataFrame(buy_rows, columns=["date", "invested_nzd_cum", "invested_usd_cum",
+                                            "units"]).set_index("date")
+
+    # Weekly value curve from first buy to the end of the data (flat units after the last
+    # buy), plus the exact final trading day so the curve ends on the valuation date.
+    held_idx = _weekly_first_days(prices.index[prices.index >= schedule[0][0]])
+    grid = prices.loc[held_idx]
+    if grid.index[-1] != prices.index[-1]:
+        grid = pd.concat([grid, prices.iloc[[-1]]])
+    held = state.reindex(grid.index, method="ffill")
+    curve = pd.DataFrame({
+        "invested_nzd_cum": held["invested_nzd_cum"],
+        "invested_usd_cum": held["invested_usd_cum"],
+        "value_usd": held["units"] * grid,
+    })
+
+    final_usd = units * prices.iloc[-1]
+    frate = fx.reindex([prices.index[-1]], method="ffill").iloc[0]
+    final_nzd = final_usd / frate
+    return NzdHoldResult(
+        n_buys=len(schedule), invested_nzd=inv_nzd, invested_usd=inv_usd,
+        final_usd=final_usd, final_nzd=final_nzd,
+        multiple_usd=final_usd / inv_usd, multiple_nzd=final_nzd / inv_nzd,
+        xirr_usd=xirr(cf_usd + [final_usd], cf_dates + [prices.index[-1]]),
+        curve=curve, cf_usd=cf_usd, cf_dates=cf_dates,
+    )
+
+
+def run_real_vs_dca(prices: pd.DataFrame, fx: pd.Series) -> dict:
+    """Both tickers simulated on the SHARED even weekly schedule (aligned frame, so buy
+    dates are identical) — plus the REAL row: actual terminal value on the same assumed
+    cashflows."""
+    schedule = even_nzd_schedule(prices.index, REAL_DEPOSIT_START, REAL_DEPOSIT_END,
+                                 REAL_DEPOSIT_TOTAL_NZD)
+    res = {t: simulate_nzd_dca_hold(prices[t].dropna(), fx, schedule, REAL_FX_FEE)
+           for t in prices.columns}
+
+    any_r = res[prices.columns[0]]
+    frate = fx.reindex([prices.index[-1]], method="ffill").iloc[0]
+    real_final_nzd = REAL_PORTFOLIO_USD / frate
+    res["REAL"] = NzdHoldResult(
+        n_buys=any_r.n_buys, invested_nzd=any_r.invested_nzd,
+        invested_usd=any_r.invested_usd,
+        final_usd=REAL_PORTFOLIO_USD, final_nzd=real_final_nzd,
+        multiple_usd=REAL_PORTFOLIO_USD / any_r.invested_usd,
+        multiple_nzd=real_final_nzd / any_r.invested_nzd,
+        xirr_usd=xirr(any_r.cf_usd + [REAL_PORTFOLIO_USD],
+                      any_r.cf_dates + [prices.index[-1]]),
+        curve=pd.DataFrame(), cf_usd=any_r.cf_usd, cf_dates=any_r.cf_dates,
+    )
+    if str(prices.index[-1].date()) != REAL_PORTFOLIO_ASOF:
+        print(f"[warn] sim valued at {prices.index[-1].date()} but the real portfolio "
+              f"value is as of {REAL_PORTFOLIO_ASOF} — dates should match", file=sys.stderr)
+    return res
+
+
+def persist_real_vs_dca(res: dict, outdir: str = "results"):
+    tickers = [t for t in res if t != "REAL"]
+    first = res[tickers[0]]
+    ts = pd.DataFrame({"invested_nzd_cum": first.curve["invested_nzd_cum"],
+                       "invested_usd_cum": first.curve["invested_usd_cum"]})
+    for t in tickers:
+        ts[f"value_{t}_usd"] = res[t].curve["value_usd"]
+    ts.insert(0, "date", [d.date() for d in ts.index])
+    ts.to_csv(f"{outdir}/real_vs_dca_timeseries.csv", index=False)
+
+    rows = []
+    for label in ["REAL"] + tickers:
+        r = res[label]
+        rows.append({"label": label, "n_buys": r.n_buys,
+                     "weekly_nzd": r.invested_nzd / r.n_buys,
+                     "invested_usd": r.invested_usd, "final_usd": r.final_usd,
+                     "multiple_usd": r.multiple_usd, "xirr_usd": r.xirr_usd,
+                     "final_nzd": r.final_nzd, "multiple_nzd": r.multiple_nzd})
+    pd.DataFrame(rows).to_csv(f"{outdir}/real_vs_dca_summary.csv", index=False)
+    print(f"[data] wrote {outdir}/real_vs_dca_timeseries.csv + real_vs_dca_summary.csv")
+
+
+def print_real_vs_dca(res: dict):
+    tickers = [t for t in res if t != "REAL"]
+    r0 = res[tickers[0]]
+    print(f"\n=== Sprint 7 — real portfolio vs weekly DCA into SPY/QQQ ===")
+    print(f"  NZ${r0.invested_nzd:,.0f} over {r0.n_buys} weekly buys "
+          f"(NZ${r0.invested_nzd / r0.n_buys:,.2f}/wk, {REAL_DEPOSIT_START} → "
+          f"{REAL_DEPOSIT_END}), converted at weekly spot ({pct(REAL_FX_FEE, 1)} FX fee) "
+          f"= ${r0.invested_usd:,.0f} USD deployed, then held.")
+    for label in ["REAL"] + tickers:
+        r = res[label]
+        tag = "  (approx: assumes the even schedule)" if label == "REAL" else ""
+        print(f"    {label:5s} ${r.final_usd:>10,.0f} USD  ({r.multiple_usd:.2f}x USD, "
+              f"{r.multiple_nzd:.2f}x NZD)  XIRR {pct(r.xirr_usd)}{tag}")
+    print("  (Hindsight caveat: SPY/QQQ are benchmarks chosen after a decade they")
+    print("   dominated; the real portfolio's risk profile may differ. Pre-tax, USD.)")
+
+
+# --------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="ETF backtest & DCA distribution study")
     ap.add_argument("--seed", type=int, default=SEED, help="RNG seed for random windows")
@@ -733,6 +893,10 @@ def main():
     print_after_tax(prices)
     print_cadence(prices)
     print_wife_downside(prices)
+
+    real = run_real_vs_dca(prices, load_series(FX_TICKER))
+    print_real_vs_dca(real)
+    persist_real_vs_dca(real)
 
     if SAVE_PLOTS:
         make_plots(prices)

@@ -115,6 +115,9 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
    tabbed layout in Sprint 5b).
 7. ✅ Projection fan graph — calculator tab, p10/p50/p90 value vs elapsed years from the
    same factors, no engine change (Sprint 6).
+8. ✅ Real-portfolio validation — the user's actual NZ$90k of deposits (2019–2024) vs an
+   even weekly DCA into SPY/QQQ, accumulate-then-hold, own dashboard tab reading
+   `results/real_vs_dca_*.csv` (Sprint 7).
 
 Open: user's own-portfolio numbers for the calculator's Custom preset. Optional candidate:
 add Sprint 3's after-tax overlay to the interactive dashboard if the static report section
