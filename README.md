@@ -18,7 +18,8 @@ The dashboard is a left-sidebar tabbed page (one view at a time; hash-routed, so
 bookmarkable). It includes an **interactive projection calculator** (its own tab): deposit amount,
 cadence, horizon, lump, FX fee and QQQ/SPY mix are recomputed client-side from the committed
 `results/projection_factors.csv` (per-window linear factors from the engine) — p10/p50/p90
-final values across 1,000 historical start dates, never a single flattering number.
+final values across 1,000 historical start dates, never a single flattering number, plus a
+fan chart of the p10–p90 value range over the years en route (vs money put in).
 
 Your machine has open internet, so `yfinance` pulls real total-return history for you.
 (The Claude web sandbox can't reach Yahoo Finance, which is why this is built to run locally.)
