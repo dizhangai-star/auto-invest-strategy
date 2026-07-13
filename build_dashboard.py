@@ -4,6 +4,7 @@ build_dashboard — Sprint 4: interactive Plotly dashboard -> results/dashboard.
 A COMMUNICATION layer, not new evidence. It reads the committed artifacts:
   - results/windows_<scenario>_<ticker>.csv  (Sprint 1 data contract: one row per window)
   - results/fan_<scenario>_<ticker>.csv      (p10/p50/p90 wealth-multiple trajectories)
+  - results/projection_factors.csv           (Sprint 5 calculator factors, per-year 1..18)
   - data/<TICKER>.csv                        (offline total-return prices)
 and NEVER re-simulates the distribution — so its numbers cannot drift from the
 committed results/ tables. The only computation here is presentational: bear-market
@@ -196,7 +197,8 @@ def fig_orders(prices: pd.Series) -> go.Figure:
 
 
 # --------------------------------------------------------------------------------------
-# Sprint 5 — interactive projection calculator.
+# Sprint 5 — interactive projection calculator (+ Sprint 6 fan: the same computation
+# looped over the 1..18-yr horizon grid, drawn as a p10-p90 band vs elapsed years).
 #
 # The engine stays the sole source of numbers: results/projection_factors.csv holds
 # per-window linear factors (g0, s) such that simulate_dca's final value is EXACTLY
