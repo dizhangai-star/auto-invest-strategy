@@ -23,6 +23,7 @@ SECTIONS = [
     ("results/sprint3_tax_cadence.md", "results/sprint3_tax_cadence.png"),
     ("results/sprint4_dashboard.md", None),
     ("results/sprint5_projection.md", None),
+    ("results/sprint6_projection_fan.md", None),
 ]
 OUT = "docs/index.html"          # GitHub Pages source: main branch /docs folder
 

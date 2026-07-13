@@ -314,9 +314,24 @@ margins (reset on mobile, where auto cross-axis margins shrink-wrap and caused o
 full-width plots on first activation, calculator recalc, reload-on-hash, back/forward,
 mobile no-overflow. Prose "view N" cross-references replaced with panel names throughout.
 
+## Sprint 6 — Projection fan graph (Calculator tab)  ✅ SHIPPED *(no engine change, no new data)*
+
+The calculator gained a **fan chart of projected value vs elapsed years** (p10–p90 band,
+p50 line, dotted "money put in" line) above the endpoint histogram. Zero engine change:
+`projection_factors.csv` already carries every integer horizon 1..18 yr, so the fan is the
+existing linear-combination + percentile computation looped over the year grid — the
+per-horizon block was factored into one JS helper (`horizonStats`) shared by the stat row,
+histogram, and fan, so they cannot disagree by construction. Year 0 anchors at
+`(1 − fee)·lump`. Verified in a real browser: fan endpoint ≡ stat row exactly (baby
+$331,024/$503,300/$631,093; wife likewise), baby p50 multiple 5.35× still ties to
+`random_windows.md`, mobile no-overflow, two builds byte-identical. Honesty caveat in the
+panel: each year's percentiles come from independent windows — the p50 line is not a path
+anyone rode; a true within-window trajectory was again rejected (would need per-step engine
+data and make the JS a second simulator). See `results/sprint6_projection_fan.md`.
+
 ## Next session
 
-**All planned sprints (0–5, plus the 5b layout pass) are shipped and the site is live.**
+**All planned sprints (0–6, plus the 5b layout pass) are shipped and the site is live.**
 Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
@@ -327,6 +342,8 @@ Nothing required remains.
 - **Sprint 5 is shipped** (projection calculator, its own dashboard tab — client-side p10/p50/p90
   projections from `results/projection_factors.csv`; the Custom preset takes the user's own
   portfolio numbers whenever provided).
+- **Sprint 6 is shipped** (projection fan graph in the calculator — p10/p50/p90 value vs
+  elapsed years from the same factors, no engine change).
 - **Remaining candidate work (optional, not committed):**
   - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
     toggle) if the static section proves insufficient.

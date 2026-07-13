@@ -4,6 +4,7 @@ build_dashboard — Sprint 4: interactive Plotly dashboard -> results/dashboard.
 A COMMUNICATION layer, not new evidence. It reads the committed artifacts:
   - results/windows_<scenario>_<ticker>.csv  (Sprint 1 data contract: one row per window)
   - results/fan_<scenario>_<ticker>.csv      (p10/p50/p90 wealth-multiple trajectories)
+  - results/projection_factors.csv           (Sprint 5 calculator factors, per-year 1..18)
   - data/<TICKER>.csv                        (offline total-return prices)
 and NEVER re-simulates the distribution — so its numbers cannot drift from the
 committed results/ tables. The only computation here is presentational: bear-market
@@ -196,7 +197,8 @@ def fig_orders(prices: pd.Series) -> go.Figure:
 
 
 # --------------------------------------------------------------------------------------
-# Sprint 5 — interactive projection calculator.
+# Sprint 5 — interactive projection calculator (+ Sprint 6 fan: the same computation
+# looped over the 1..18-yr horizon grid, drawn as a p10-p90 band vs elapsed years).
 #
 # The engine stays the sole source of numbers: results/projection_factors.csv holds
 # per-window linear factors (g0, s) such that simulate_dca's final value is EXACTLY
@@ -229,6 +231,10 @@ And the end-numbers hide the ride: __DD_NOTE__</div>
   <label>assumed <input id="proj_rate" type="number" step="0.5" value="7">%/yr</label>
 </div>
 <div id="proj_out"></div>
+<div id="proj_fan"></div>
+<p class="note">Fan: each year&rsquo;s p10/p50/p90 comes from its own ~1,000 independent historical
+start dates, not one continuous path &mdash; the p50 line is not a trajectory anyone actually rode
+(same construction as the Percentile fan view). Its endpoint equals the stat row above exactly.</p>
 <div id="proj_hist"></div>
 <script>
 const PROJ=__PROJ_JSON__;
@@ -246,6 +252,18 @@ function impliedRate(target,ppy,yrs,amount,lump,fee){
   for(let k=0;k<80;k++){const m=(lo+hi)/2;if(fvFixed(m,ppy,yrs,amount,lump,fee)<target)lo=m;else hi=m;}
   return (lo+hi)/2;
 }
+function horizonStats(freq,y,lump,amount,fee,wq,ws){
+  const cell=PROJ[freq][String(y)];
+  const N=cell.n.length,finals=new Array(N),invs=new Array(N);
+  for(let i=0;i<N;i++){
+    const g0=wq*cell.QQQ.g0[i]+ws*cell.SPY.g0[i],s=wq*cell.QQQ.s[i]+ws*cell.SPY.s[i];
+    finals[i]=(1-fee)*(lump*g0+amount*s);
+    invs[i]=lump+amount*cell.n[i];
+  }
+  finals.sort((a,b)=>a-b);invs.sort((a,b)=>a-b);
+  return {finals:finals,p10:pctile(finals,.1),p50:pctile(finals,.5),
+          p90:pctile(finals,.9),inv:pctile(invs,.5)};
+}
 function recalcProj(){
   const amount=+$p("proj_amount").value||0,freq=$p("proj_freq").value;
   const hv=+$p("proj_hval").value||0,hu=$p("proj_hunit").value;
@@ -254,15 +272,10 @@ function recalcProj(){
   $p("proj_qqqlab").textContent=Math.round(wq*100)+"% QQQ / "+Math.round(ws*100)+"% SPY";
   const yrsRaw=hu==="years"?hv:(hu==="months"?hv/12:hv/52);
   const yrs=Math.min(18,Math.max(1,Math.round(yrsRaw)));
-  const ppy=freq==="W"?52:12,cell=PROJ[freq][String(yrs)];
-  const N=cell.n.length,finals=new Array(N),invs=new Array(N);
-  for(let i=0;i<N;i++){
-    const g0=wq*cell.QQQ.g0[i]+ws*cell.SPY.g0[i],s=wq*cell.QQQ.s[i]+ws*cell.SPY.s[i];
-    finals[i]=(1-fee)*(lump*g0+amount*s);
-    invs[i]=lump+amount*cell.n[i];
-  }
-  finals.sort((a,b)=>a-b);invs.sort((a,b)=>a-b);
-  const p10=pctile(finals,.1),p50=pctile(finals,.5),p90=pctile(finals,.9),inv=pctile(invs,.5);
+  const ppy=freq==="W"?52:12;
+  const end=horizonStats(freq,yrs,lump,amount,fee,wq,ws);
+  const finals=end.finals,N=finals.length;
+  const p10=end.p10,p50=end.p50,p90=end.p90,inv=end.inv;
   const fv=fvFixed(rate,ppy,yrs,amount,lump,fee),imp=impliedRate(p50,ppy,yrs,amount,lump,fee);
   const snap=Math.abs(yrsRaw-yrs)>1e-9?" &mdash; input snapped to the "+yrs+"-yr historical window grid":"";
   let h='<div class="projstats">'
@@ -278,6 +291,26 @@ function recalcProj(){
     +'</p>';
   if(p10<inv)h+='<p class="projred">p10 &lt; money put in: in at least 1-in-10 historical windows you ended with less than you deposited.</p>';
   $p("proj_out").innerHTML=h;
+  const xs=[0],flo=[(1-fee)*lump],fmid=[(1-fee)*lump],fhi=[(1-fee)*lump],fput=[lump];
+  for(let y=1;y<=yrs;y++){
+    const st=(y===yrs)?end:horizonStats(freq,y,lump,amount,fee,wq,ws);
+    xs.push(y);flo.push(st.p10);fmid.push(st.p50);fhi.push(st.p90);fput.push(st.inv);
+  }
+  Plotly.react("proj_fan",
+    [{x:xs,y:fhi,type:"scatter",mode:"lines",line:{width:0},showlegend:false,
+      hovertemplate:"p90 $%{y:,.0f}<extra></extra>"},
+     {x:xs,y:flo,type:"scatter",mode:"lines",line:{width:0},fill:"tonexty",
+      fillcolor:"rgba(42,120,214,0.16)",name:"p10–p90",
+      hovertemplate:"p10 $%{y:,.0f}<extra></extra>"},
+     {x:xs,y:fmid,type:"scatter",mode:"lines",line:{color:"#2a78d6",width:2.5},name:"p50",
+      hovertemplate:"p50 $%{y:,.0f}<extra></extra>"},
+     {x:xs,y:fput,type:"scatter",mode:"lines",line:{color:"#7a7a76",width:1.6,dash:"dot"},
+      name:"money put in",hovertemplate:"put in $%{y:,.0f}<extra></extra>"}],
+    {margin:{t:30,r:20,b:45,l:55},height:340,hovermode:"x unified",
+     legend:{orientation:"h",x:0,y:1.12},
+     xaxis:{title:{text:"elapsed years"},dtick:yrs>9?2:1,range:[0,yrs]},
+     yaxis:{title:{text:"portfolio value ($, nominal USD, pre-tax)"},tickprefix:"$",rangemode:"tozero"}},
+    {displaylogo:false,responsive:true});
   Plotly.react("proj_hist",
     [{x:finals,type:"histogram",nbinsx:60,marker:{color:"#2a78d6"},hovertemplate:"$%{x:,.0f}<extra></extra>"}],
     {margin:{t:30,r:20,b:45,l:55},height:320,showlegend:false,

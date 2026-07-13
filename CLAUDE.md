@@ -113,6 +113,8 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 6. ✅ Projection calculator — its own dashboard tab, client-side p10/p50/p90 from
    `results/projection_factors.csv` (Sprint 5; dashboard restructured to a left-sidebar
    tabbed layout in Sprint 5b).
+7. ✅ Projection fan graph — calculator tab, p10/p50/p90 value vs elapsed years from the
+   same factors, no engine change (Sprint 6).
 
 Open: user's own-portfolio numbers for the calculator's Custom preset. Optional candidate:
 add Sprint 3's after-tax overlay to the interactive dashboard if the static report section
