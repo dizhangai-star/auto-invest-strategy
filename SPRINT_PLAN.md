@@ -271,7 +271,7 @@ project's core honesty lever; overlays (FX, tax) are *always* labelled layers, n
 the offline-CSV reference keeps every committed number byte-reproducible; and the engine owns all
 numbers while `build_report.py` only presents them, so the page can't drift.
 
-## Sprint 5 — Projection calculator  ✅ SHIPPED *(dashboard view 3; engine stays sole source of numbers)*
+## Sprint 5 — Projection calculator  ✅ SHIPPED *(its own dashboard tab; engine stays sole source of numbers)*
 
 Answers the forward question ("deposit $X weekly/monthly for N periods → what's the pot?")
 for Baby, Wife, and a custom QQQ/SPY mix, as a **p10/p50/p90 range** from the Sprint 1
@@ -299,16 +299,32 @@ md5); dashboard now 7.5 MB, still fully offline. Verified in a real browser: pre
 note, and the red "p10 < money put in" warning all fire. Honesty caveats sit inside the panel
 itself (one macro path, pre-tax, drawdowns en route). See `results/sprint5_projection.md`.
 
+## Sprint 5b — Dashboard layout: left-sidebar tabs  ✅ SHIPPED *(readability only, no numbers touched)*
+
+`dashboard.html` restructured from one long scroll into a left-sidebar tabbed layout: five
+panels (Outcome distribution / Percentile fan / Projection calculator / Bull/bear cycles /
+One path), hash-routed (`#calculator` etc. — back-button and bookmarks work), one panel
+visible at a time. Still a single self-contained offline file, Plotly inlined once; the
+h1 + honesty-caveat box sit above the panels, visible on every tab (never hidden behind
+one). Implementation notes: panels are `display:none` until active, and plots are re-sized
+on each activation (Plotly renders at fallback width inside hidden containers); the sidebar
+stretches to full page height with a sticky inner nav; `main` is centered via flex auto
+margins (reset on mobile, where auto cross-axis margins shrink-wrap and caused overflow);
+<800px the sidebar becomes a top link row. Verified in a real browser: tab switching,
+full-width plots on first activation, calculator recalc, reload-on-hash, back/forward,
+mobile no-overflow. Prose "view N" cross-references replaced with panel names throughout.
+
 ## Next session
 
-**All planned sprints (0–5) are shipped and the site is live.** Nothing required remains.
+**All planned sprints (0–5, plus the 5b layout pass) are shipped and the site is live.**
+Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
   https://dizhangai-star.github.io/auto-invest-strategy/ (verified 2026-07 via the GitHub API).
 - **Sprint 4 is shipped** (interactive Plotly dashboard → `results/dashboard.html` +
   `docs/dashboard.html`, `python3 build_dashboard.py` — reads the Sprint 1 CSV contract +
   offline `data/*.csv`, never re-simulates).
-- **Sprint 5 is shipped** (projection calculator, dashboard view 3 — client-side p10/p50/p90
+- **Sprint 5 is shipped** (projection calculator, its own dashboard tab — client-side p10/p50/p90
   projections from `results/projection_factors.csv`; the Custom preset takes the user's own
   portfolio numbers whenever provided).
 - **Remaining candidate work (optional, not committed):**

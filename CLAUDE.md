@@ -110,8 +110,9 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 3. ✅ NZDUSD overlay for the baby scenario (Sprint 2).
 4. ✅ After-tax layer: PIE 28% vs FIF FDR (Sprint 3).
 5. ✅ Fee sensitivity: weekly vs monthly DCA (Sprint 3 — a wash, ~0.03%/yr).
-6. ✅ Projection calculator — dashboard view 3, client-side p10/p50/p90 from
-   `results/projection_factors.csv` (Sprint 5).
+6. ✅ Projection calculator — its own dashboard tab, client-side p10/p50/p90 from
+   `results/projection_factors.csv` (Sprint 5; dashboard restructured to a left-sidebar
+   tabbed layout in Sprint 5b).
 
 Open: user's own-portfolio numbers for the calculator's Custom preset. Optional candidate:
 add Sprint 3's after-tax overlay to the interactive dashboard if the static report section

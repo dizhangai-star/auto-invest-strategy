@@ -1,4 +1,4 @@
-# Sprint 5 — Projection calculator (dashboard view 3)
+# Sprint 5 — Projection calculator (dashboard Calculator tab)
 
 **Question it answers:** "if I deposit $X weekly/monthly for N weeks/months/years (plus an
 optional lump), what will the portfolio be worth?" — for the Baby plan, the Wife plan, and a
