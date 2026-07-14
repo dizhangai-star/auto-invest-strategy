@@ -166,6 +166,105 @@ def fig_cycles(prices: pd.DataFrame) -> tuple[go.Figure, list[dict]]:
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 8 view — buy day-of-week sensitivity, from results/weekday_anchor.csv.
+# Quantiles/spreads here are presentational summaries of the committed per-window rows,
+# same as fig_distribution — the engine (backtest.weekday_anchor_study) simulated them.
+# --------------------------------------------------------------------------------------
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+
+def fig_weekday() -> tuple[go.Figure, str]:
+    df = pd.read_csv("results/weekday_anchor.csv")
+    full = df[df["scope"] == "full"]
+    win = df[df["scope"] == "window"]
+    fig = make_subplots(
+        rows=1, cols=2, horizontal_spacing=0.1,
+        subplot_titles=["18-yr window XIRR by buy day (p50 dot, p10–p90 whisker)",
+                        "Same window, best minus worst day (bp of XIRR)"])
+    notes = []
+    for t in TICKERS:
+        w = (win[win["ticker"] == t].drop_duplicates(["start", "anchor"])
+             .pivot(index="start", columns="anchor", values="xirr"))[WEEKDAYS]
+        p10, p50, p90 = w.quantile(.1), w.quantile(.5), w.quantile(.9)
+        fig.add_trace(go.Scatter(
+            x=WEEKDAYS, y=p50 * 100, mode="markers", name=t, legendgroup=t,
+            marker=dict(color=COLORS[t], size=9),
+            error_y=dict(type="data", array=(p90 - p50) * 100,
+                         arrayminus=(p50 - p10) * 100,
+                         color=_rgba(COLORS[t], 0.5), thickness=1.5, width=6),
+            hovertemplate=t + " %{x}: p50 XIRR %{y:.2f}%<extra></extra>"), row=1, col=1)
+        spread_bp = (w.max(axis=1) - w.min(axis=1)) * 1e4
+        fig.add_trace(go.Histogram(
+            x=spread_bp, name=t, legendgroup=t, showlegend=False,
+            marker_color=COLORS[t], opacity=0.55, nbinsx=40,
+            hovertemplate=t + " spread %{x:.1f}bp: %{y} windows<extra></extra>"),
+            row=1, col=2)
+        f = full[full["ticker"] == t].set_index("anchor")["xirr"]
+        best = w.idxmax(axis=1).value_counts(normalize=True)
+        luck_bp = (p90["Mon"] - p10["Mon"]) * 1e4
+        notes.append(
+            f"<strong>{t}</strong>: full-history (1999–2026) XIRR by buy day "
+            + " / ".join(f"{a} {f[a]*100:.2f}%" for a in WEEKDAYS)
+            + f". Paired per-window spread: median {spread_bp.median():.1f}bp, "
+              f"p90 {spread_bp.quantile(.9):.1f}bp, max {spread_bp.max():.1f}bp — vs a "
+              f"{luck_bp:,.0f}bp p10→p90 start-date range on the same windows. Best day was "
+              f"Mon in {best.get('Mon', 0):.0%} of windows.")
+    fig.update_yaxes(title_text="annualized XIRR (%)", row=1, col=1)
+    fig.update_xaxes(title_text="buy-day anchor", row=1, col=1)
+    fig.update_xaxes(title_text="max − min XIRR across the 5 anchors (bp)", row=1, col=2)
+    fig.update_yaxes(title_text="windows", row=1, col=2)
+    fig.update_layout(barmode="overlay", height=460,
+                      legend=dict(orientation="h", y=1.15, x=0))
+    return fig, "<br>".join(notes)
+
+
+# --------------------------------------------------------------------------------------
+# Sprint 8b view — dip double-down vs plain daily DCA, from results/dip_double.csv.
+# Presentational summaries of committed per-window rows, same precedent as fig_weekday.
+# --------------------------------------------------------------------------------------
+DIP_VARIANTS = [("dip1", "−1% trigger", "#2a78d6"),
+                ("dip2", "−2% trigger", "#1baf7a"),
+                ("dip3", "−3% trigger", "#e08b00")]
+
+
+def fig_dip() -> tuple[go.Figure, str]:
+    df = pd.read_csv("results/dip_double.csv")
+    full = df[df["scope"] == "full"]
+    win = df[df["scope"] == "window"]
+    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.1,
+                        subplot_titles=list(TICKERS))
+    notes = []
+    for i, t in enumerate(TICKERS, start=1):
+        wt = win[win["ticker"] == t].drop_duplicates(["start", "variant"])
+        x = wt.pivot(index="start", columns="variant", values="xirr")
+        fin = wt.assign(final=wt["multiple"] * wt["invested"]) \
+                .pivot(index="start", columns="variant", values="final")
+        f = full[full["ticker"] == t].set_index("variant")
+        yrs = (pd.Timestamp(f["end"].iloc[0]) - pd.Timestamp(f["start"].iloc[0])).days / 365.25
+        parts = []
+        for v, label, color in DIP_VARIANTS:
+            d = (x[v] - x["daily"]) * 1e4
+            fig.add_trace(go.Histogram(
+                x=d, name=label, legendgroup=v, showlegend=(i == 1),
+                marker_color=color, opacity=0.55, nbinsx=40,
+                hovertemplate=f"{t} {label} %{{x:.2f}}bp: %{{y}} windows<extra></extra>"),
+                row=1, col=i)
+            d_fin = fin[v] - fin["daily"]
+            parts.append(f"{label} {f.at[v, 'n_doubles'] / yrs:.1f} doubles/yr, "
+                         f"median {d.median():+.2f}bp/yr "
+                         f"(≈ {'+' if d_fin.median() >= 0 else '−'}${abs(d_fin.median()):,.0f} "
+                         f"on the median window's ~${fin['daily'].median():,.0f} final)")
+        fig.add_vline(x=0, line=dict(color="#7a7a76", width=1, dash="dot"), row=1, col=i)
+        fig.update_xaxes(title_text="XIRR edge over plain daily (bp/yr)", row=1, col=i)
+        notes.append(f"<strong>{t}</strong> (plain daily XIRR "
+                     f"{f.at['daily', 'xirr']:.2%} full-history): " + "; ".join(parts) + ".")
+    fig.update_yaxes(title_text="windows", row=1, col=1)
+    fig.update_layout(barmode="overlay", height=440,
+                      legend=dict(orientation="h", y=1.18, x=0))
+    return fig, "<br>".join(notes)
+
+
+# --------------------------------------------------------------------------------------
 # View 4 (secondary, illustrative ONLY) — DCA buy orders on one price path
 # --------------------------------------------------------------------------------------
 def fig_orders(prices: pd.Series) -> go.Figure:
@@ -475,6 +574,8 @@ PANELS = [("distribution", "Outcome distribution"),
           ("calculator", "Projection calculator"),
           ("real", "My portfolio vs DCA"),
           ("cycles", "Bull/bear cycles"),
+          ("weekday", "Buy day of week"),
+          ("dip", "Buy the dip"),
           ("orders", "One path (illustrative)")]
 
 # Plotly figures rendered inside display:none panels get fallback width, so every panel
@@ -502,6 +603,8 @@ def build() -> str:
     proj_html = projection_section()
     f6, real_table, real_meta = fig_real_vs_dca()
     f3, spans = fig_cycles(prices)
+    f7, weekday_notes = fig_weekday()
+    f8, dip_notes = fig_dip()
     f4 = fig_orders(prices["QQQ"])
     worst = min(spans, key=lambda s: s["depth"])
     print(f"[dashboard] QQQ bear spans (<= {BEAR_THRESHOLD:.0%}): "
@@ -591,6 +694,42 @@ drawdown definition as the engine. The {worst['depth']:.0%} dot-com span
 ({worst['start'].date()} → {worst['end'].date()}) is the risk the randomized windows
 under-sample — it appears in full in no completed 18-yr window.</p>
 {div(f3, 4)}
+</section>
+
+<section class="panel" id="weekday">
+<h2>Buy day of week — does the weekly anchor matter?</h2>
+<p class="note">The base sims buy the first trading close of each Mon–Sun week (≈ Monday).
+Here the same weekly DCA (${WEEKLY_CONTRIB:.0f}/wk, {FX_FEE:.1%} FX fee) is re-run anchored
+to each weekday: buy that day's close, roll <em>forward</em> on a holiday (Mon → Tue),
+roll <em>back</em> only when the week has nothing later (Fri holiday → Thu). Windows are
+<strong>paired</strong> — the same {RANDOM_N:,} random 18-yr starts (seed 42) under all five
+anchors — so the right-hand histogram isolates the weekday effect from start-date luck.<br>
+{weekday_notes}<br>
+<strong>Verdict: pick the day that suits your payroll.</strong> The best-vs-worst-day gap
+is ~1–3bp/yr — three orders of magnitude below start-date luck, and even smaller than the
+0.5% FX fee's already-negligible ~3bp/yr XIRR drag (Sprint 2). Monday's tiny, consistent
+edge (buying the historically weakest close of the week — the "weekend effect") is real in
+this sample but too small to plan around.</p>
+{div(f7, 7)}
+</section>
+
+<section class="panel" id="dip">
+<h2>Buy the dip — double down on a bad day?</h2>
+<p class="note">Household-spec rule, tested against plain $100-per-trading-day DCA on the
+same paired windows: a day closing ≤ −1/−2/−3% buys <strong>2×</strong> and queues one
+skip; the next calm day buys $0 (so dollars per year stay the same — only the
+<em>timing</em> tilts toward crash days). Trigger days are never skipped and always queue
+their own skip. Fresh state each window, {FX_FEE:.1%} FX fee on all variants.<br>
+{dip_notes}<br>
+<strong>Verdict: it "works", but the prize is a rounding error.</strong> The tilt wins in
+essentially every window — mechanically, shifting the same dollars onto red-day closes buys
+slightly cheaper — but the edge tops out below half a basis point per year: a few hundred
+to ~$1,400 more on a median ~$1.4–2.4M final, i.e. under 0.06% of terminal wealth after 18
+years of $100/day. Rarer triggers tilt less, so the −3% version gains the <em>least</em>.
+That's the same order as the weekday effect, ~10× smaller than the FX fee, and ~1,000×
+smaller than start-date luck. The consistency is the interesting finding; the magnitude
+says automate a boring schedule and ignore red days.</p>
+{div(f8, 8)}
 </section>
 
 <section class="panel" id="orders">

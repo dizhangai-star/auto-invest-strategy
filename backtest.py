@@ -60,6 +60,10 @@ MARGINAL_RATES = [0.33, 0.39]    # a direct FIF hold is taxed at the investor's 
 # Sprint 5 — projection factor grid for the dashboard's client-side calculator
 PROJ_HORIZON_YEARS = range(1, 19)   # 1..18-yr windows, both cadences, RANDOM_N windows each
 
+# Sprint 8b — dip double-down: daily DCA, 2x on a big down day, skip the next calm day
+DIP_DAILY_BASE = 100.0                 # $/trading day
+DIP_THRESHOLDS = [0.01, 0.02, 0.03]    # close-to-close daily drop that triggers the double
+
 # Sprint 7 — real-portfolio validation: the user's actual NZD deposits vs a weekly DCA
 REAL_DEPOSIT_TOTAL_NZD = 90_000.0   # total deposited (NZD), modelled as an even weekly split
 REAL_DEPOSIT_START = "2019-02-25"   # first real deposit
@@ -201,9 +205,14 @@ def _contribution_dates(prices: pd.Series, freq: str) -> pd.Series:
     return prices.resample(freq).first().dropna()
 
 
-def simulate_dca(prices: pd.Series, amount: float, freq: str,
-                 fx_fee: float = 0.0, lump: float = 0.0) -> DcaResult:
-    buys = _contribution_dates(prices, freq)
+def simulate_dca(prices: pd.Series, amount: float | pd.Series, freq: str,
+                 fx_fee: float = 0.0, lump: float = 0.0,
+                 buys: pd.Series | None = None) -> DcaResult:
+    """`amount` is either a fixed $ per buy, or a pd.Series of per-buy dollars indexed
+    like `buys` (Sprint 8b variable schedules). Zero-amount days must not be in `buys`."""
+    if buys is None:
+        buys = _contribution_dates(prices, freq)
+    per_buy = amount if isinstance(amount, pd.Series) else None
     units = 0.0
     invested = 0.0
     cfs, cf_dates, curve = [], [], []
@@ -216,10 +225,11 @@ def simulate_dca(prices: pd.Series, amount: float, freq: str,
         cfs.append(-lump); cf_dates.append(buys.index[0])
 
     for dt, px in buys.items():
-        deployed = amount * (1 - fx_fee)
+        a = per_buy.at[dt] if per_buy is not None else amount
+        deployed = a * (1 - fx_fee)
         units += deployed / px
-        invested += amount
-        cfs.append(-amount); cf_dates.append(dt)
+        invested += a
+        cfs.append(-a); cf_dates.append(dt)
         curve.append((dt, invested, units * px))
 
     final_px = prices.iloc[-1]
@@ -406,6 +416,188 @@ def persist_projection_factors(prices: pd.DataFrame, horizons=PROJ_HORIZON_YEARS
     out.to_csv(f"{outdir}/projection_factors.csv", index=False, float_format="%.6g")
     print(f"[data] wrote {outdir}/projection_factors.csv "
           f"({len(out)} rows: {len(list(horizons))} horizons x W/MS, n={n} windows each)")
+
+
+# --------------------------------------------------------------------------------------
+# Sprint 8 — does the buy day-of-week matter? (weekly DCA anchored Mon..Fri)
+#
+# The base sims buy at the FIRST trading day of each Mon-Sun week (resample('W').first()),
+# i.e. Monday's close, rolling to Tuesday on a Monday holiday. Here every anchor day gets
+# the same treatment: buy the target weekday's close; on a holiday roll FORWARD within the
+# same week (Mon holiday -> Tue), and only when nothing later exists in that week (Fri
+# holiday) roll BACK (-> Thu). Windows are PAIRED: the same random 18-yr starts (Sprint 1
+# seed) are re-run under all five anchors, so the per-window max-min spread isolates the
+# weekday effect from window luck. A window starting mid-week takes its first buy at the
+# anchor's next occurrence — exactly what a real drip-feed starter would do.
+# --------------------------------------------------------------------------------------
+WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+
+def weekday_buy_dates(prices: pd.Series, weekday: int) -> pd.DatetimeIndex:
+    """One buy date per Mon-Sun week: first trading day with dow >= `weekday` (0=Mon),
+    else the week's last trading day (only a Fri/short-week closure falls backward)."""
+    idx = prices.index
+    wk = idx.to_period("W-SUN")
+    elig = idx.weekday >= weekday
+    first_elig = pd.Series(idx[elig], index=wk[elig]).groupby(level=0).first()
+    last_all = pd.Series(idx, index=wk).groupby(level=0).last()
+    return pd.DatetimeIndex(first_elig.reindex(last_all.index).fillna(last_all).values)
+
+
+def weekday_anchor_study(prices: pd.DataFrame, years: int = BABY_YEARS,
+                         n: int = RANDOM_N, seed: int = SEED,
+                         outdir: str = "results") -> pd.DataFrame:
+    """Full-history + N paired random windows, weekly DCA under each Mon..Fri anchor.
+    Persists results/weekday_anchor.csv (scope = 'full' | 'window') for the dashboard."""
+    rows = []
+    for t in prices.columns:
+        s = prices[t].dropna()
+        anchor_buys = {d: s.loc[weekday_buy_dates(s, d)] for d in range(5)}
+        for d, label in enumerate(WEEKDAY_LABELS):
+            r = simulate_dca(s, WEEKLY_CONTRIB, "W", fx_fee=FX_FEE, buys=anchor_buys[d])
+            rows.append({"scope": "full", "ticker": t, "anchor": label,
+                         "start": s.index[0].date(), "end": s.index[-1].date(),
+                         "xirr": r.xirr, "multiple": r.multiple})
+        for st in sample_start_dates(s.index, years, n, seed):
+            window = s.loc[st:st + pd.DateOffset(years=years)]
+            if len(window) < 50:
+                continue
+            for d, label in enumerate(WEEKDAY_LABELS):
+                buys = anchor_buys[d].loc[window.index[0]:window.index[-1]]
+                r = simulate_dca(window, WEEKLY_CONTRIB, "W", fx_fee=FX_FEE, buys=buys)
+                rows.append({"scope": "window", "ticker": t, "anchor": label,
+                             "start": st.date(), "end": window.index[-1].date(),
+                             "xirr": r.xirr, "multiple": r.multiple})
+    df = pd.DataFrame(rows)
+    df.to_csv(f"{outdir}/weekday_anchor.csv", index=False, float_format="%.6g")
+    print(f"[data] wrote {outdir}/weekday_anchor.csv "
+          f"({len(df)} rows: full history + {n} paired {years}-yr windows x 5 anchors)")
+    return df
+
+
+def print_weekday_anchor(df: pd.DataFrame):
+    print("\n=== Sprint 8 — buy day-of-week: weekly DCA anchored Mon..Fri ===")
+    full = df[df["scope"] == "full"]
+    win = df[df["scope"] == "window"]
+    for t in full["ticker"].unique():
+        f = full[full["ticker"] == t].set_index("anchor")
+        print(f"\n  {t} full history ({f['start'].iloc[0]} → {f['end'].iloc[0]}):")
+        print("    " + "   ".join(f"{a} XIRR {pct(f.at[a, 'xirr'], 2)}"
+                                  for a in WEEKDAY_LABELS))
+        # duplicate random starts re-run the same deterministic window — drop before pivot
+        w = (win[win["ticker"] == t].drop_duplicates(["start", "anchor"])
+             .pivot(index="start", columns="anchor", values="xirr"))
+        spread = w.max(axis=1) - w.min(axis=1)
+        best = w.idxmax(axis=1).value_counts(normalize=True)
+        med = {a: w[a].median() for a in WEEKDAY_LABELS}
+        print("    windows p50 XIRR: " + "   ".join(f"{a} {pct(med[a], 2)}"
+                                                    for a in WEEKDAY_LABELS))
+        print(f"    paired per-window spread (max−min across anchors): "
+              f"median {pct(spread.median(), 3)}   p90 {pct(spread.quantile(0.9), 3)}   "
+              f"max {pct(spread.max(), 3)}")
+        print("    best anchor by window: "
+              + "  ".join(f"{a} {pct(best.get(a, 0.0), 0)}" for a in WEEKDAY_LABELS))
+    print("  (Compare the spread to the p10→p90 window range in the Sprint 1 study — "
+          "start-date luck, not weekday, is the variable that matters.)")
+
+
+# --------------------------------------------------------------------------------------
+# Sprint 8b — "double down on a bad day": daily DCA with a dip-triggered 2x buy.
+#
+# Rule (a skip-credit queue, per the household's own spec):
+#   - buy $DIP_DAILY_BASE at every trading day's close;
+#   - a day whose close-to-close return is <= -threshold buys 2x and queues ONE skip
+#     credit (trigger days are never skipped, and always queue their own credit);
+#   - a calm day with credits pending buys $0 and consumes one credit.
+# Nearly cash-flow-neutral vs plain daily DCA: every extra $100 on a crash day is funded
+# by a skipped calm day, so a PAIRED comparison against the plain daily baseline on the
+# same random windows isolates the timing tilt. Fresh credit state per window.
+# --------------------------------------------------------------------------------------
+def dip_buy_schedule(prices: pd.Series, base: float = DIP_DAILY_BASE,
+                     threshold: float = 0.03) -> pd.Series:
+    """Per-trading-day contribution under the dip-double rule (0 / base / 2*base).
+    Day 1 has no prior close (NaN return -> no trigger) and buys the base amount."""
+    rets = prices.pct_change().to_numpy()
+    amounts = np.empty(len(prices))
+    credits = 0
+    for i, r in enumerate(rets):
+        if r <= -threshold:                # NaN on day 1 compares False
+            amounts[i] = 2 * base
+            credits += 1
+        elif credits > 0:
+            amounts[i] = 0.0
+            credits -= 1
+        else:
+            amounts[i] = base
+    return pd.Series(amounts, index=prices.index)
+
+
+def _simulate_dip(window: pd.Series, threshold: float | None) -> tuple[DcaResult, int, int]:
+    """One window under one variant (None = plain daily baseline). Returns the DcaResult
+    plus the number of doubled and skipped days."""
+    if threshold is None:
+        sched = pd.Series(DIP_DAILY_BASE, index=window.index)
+    else:
+        sched = dip_buy_schedule(window, DIP_DAILY_BASE, threshold)
+    live = sched[sched > 0]
+    r = simulate_dca(window, live, "D", fx_fee=FX_FEE, buys=window[live.index])
+    return r, int((sched == 2 * DIP_DAILY_BASE).sum()), int((sched == 0.0).sum())
+
+
+def dip_double_study(prices: pd.DataFrame, thresholds=DIP_THRESHOLDS,
+                     years: int = BABY_YEARS, n: int = RANDOM_N, seed: int = SEED,
+                     outdir: str = "results") -> pd.DataFrame:
+    """Full-history + N paired random windows, plain daily DCA vs dip-double variants.
+    Persists results/dip_double.csv (scope = 'full' | 'window') for the dashboard."""
+    variants = [("daily", None)] + [(f"dip{int(th * 100)}", th) for th in thresholds]
+    rows = []
+    for t in prices.columns:
+        s = prices[t].dropna()
+        for label, th in variants:
+            r, nd, ns = _simulate_dip(s, th)
+            rows.append({"scope": "full", "ticker": t, "variant": label,
+                         "start": s.index[0].date(), "end": s.index[-1].date(),
+                         "xirr": r.xirr, "multiple": r.multiple, "invested": r.invested,
+                         "n_doubles": nd, "n_skips": ns})
+        for st in sample_start_dates(s.index, years, n, seed):
+            window = s.loc[st:st + pd.DateOffset(years=years)]
+            if len(window) < 50:
+                continue
+            for label, th in variants:
+                r, nd, ns = _simulate_dip(window, th)
+                rows.append({"scope": "window", "ticker": t, "variant": label,
+                             "start": st.date(), "end": window.index[-1].date(),
+                             "xirr": r.xirr, "multiple": r.multiple,
+                             "invested": r.invested, "n_doubles": nd, "n_skips": ns})
+    df = pd.DataFrame(rows)
+    df.to_csv(f"{outdir}/dip_double.csv", index=False, float_format="%.6g")
+    print(f"[data] wrote {outdir}/dip_double.csv "
+          f"({len(df)} rows: full history + {n} paired {years}-yr windows x "
+          f"{len(variants)} variants)")
+    return df
+
+
+def print_dip_double(df: pd.DataFrame):
+    print("\n=== Sprint 8b — daily DCA vs dip double-down (2x on a -X% day, skip next calm day) ===")
+    full = df[df["scope"] == "full"]
+    win = df[df["scope"] == "window"]
+    for t in full["ticker"].unique():
+        f = full[full["ticker"] == t].set_index("variant")
+        yrs = (pd.Timestamp(f["end"].iloc[0]) - pd.Timestamp(f["start"].iloc[0])).days / 365.25
+        print(f"\n  {t} full history ({f['start'].iloc[0]} → {f['end'].iloc[0]}): "
+              f"plain daily XIRR {pct(f.at['daily', 'xirr'], 2)}")
+        w = (win[win["ticker"] == t].drop_duplicates(["start", "variant"])
+             .pivot(index="start", columns="variant", values="xirr"))
+        for v in f.index.drop("daily"):
+            d = (w[v] - w["daily"]) * 1e4          # paired delta in bp of XIRR
+            print(f"    {v}: {f.at[v, 'n_doubles'] / yrs:5.1f} triggers/yr   "
+                  f"full-history XIRR {pct(f.at[v, 'xirr'], 2)} "
+                  f"({(f.at[v, 'xirr'] - f.at['daily', 'xirr']) * 1e4:+.1f}bp)   "
+                  f"window delta median {d.median():+.1f}bp "
+                  f"[p10 {d.quantile(.1):+.1f}, p90 {d.quantile(.9):+.1f}]   "
+                  f"beats plain in {pct((d > 0).mean(), 0)} of windows")
+    print("  (Deltas are PAIRED — same window, same dollars-per-year, only the timing tilt "
+          "differs.)")
 
 
 # --------------------------------------------------------------------------------------
@@ -897,6 +1089,9 @@ def main():
     real = run_real_vs_dca(prices, load_series(FX_TICKER))
     print_real_vs_dca(real)
     persist_real_vs_dca(real)
+
+    print_weekday_anchor(weekday_anchor_study(prices, n=args.n, seed=args.seed))
+    print_dip_double(dip_double_study(prices, n=args.n, seed=args.seed))
 
     if SAVE_PLOTS:
         make_plots(prices)
