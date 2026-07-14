@@ -1053,6 +1053,66 @@ def print_real_vs_dca(res: dict):
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 9 — would "buy the dip" have helped on the REAL scenario?
+#
+# Same NZD total and same deposit window as Sprint 7, but deployed DAILY into each ticker
+# under the Sprint 8b dip rule (2x on a <=-X% close, skip the next calm day) vs an
+# even-daily baseline. Reuses dip_buy_schedule for the amount pattern and the Sprint 7
+# simulate_nzd_dca_hold for FX conversion + accumulate-then-hold, so the only thing that
+# varies across rows is WHEN within the window the fixed NZD gets deployed. The dip schedule
+# is ticker-specific (SPY and QQQ dip on different days). Deployed daily so the dip has
+# daily moves to react to; the even-daily baseline nets ~equal to Sprint 7's weekly DCA
+# (cadence is a wash, Sprint 3), and is the honest like-for-like anchor for the dip delta.
+# --------------------------------------------------------------------------------------
+def real_dip_variants(prices: pd.DataFrame, fx: pd.Series, thresholds=DIP_THRESHOLDS,
+                      outdir: str = "results") -> pd.DataFrame:
+    variants = [("even_daily", None)] + [(f"dip{int(th * 100)}", th) for th in thresholds]
+    rows = []
+    for t in prices.columns:
+        s = prices[t].dropna()
+        w = s.loc[REAL_DEPOSIT_START:REAL_DEPOSIT_END]
+        base = REAL_DEPOSIT_TOTAL_NZD / len(w)          # even daily NZD before the dip tilt
+        for label, th in variants:
+            amt = (pd.Series(base, index=w.index) if th is None
+                   else dip_buy_schedule(w, base, th))
+            schedule = [(dt, a) for dt, a in amt.items() if a > 0]
+            r = simulate_nzd_dca_hold(s, fx, schedule, REAL_FX_FEE)
+            rows.append({"ticker": t, "strategy": label,
+                         "n_buys": len(schedule),
+                         "n_doubles": int((amt == 2 * base).sum()),
+                         "n_skips": int((amt == 0.0).sum()),
+                         "invested_nzd": r.invested_nzd, "invested_usd": r.invested_usd,
+                         "final_usd": r.final_usd, "multiple_usd": r.multiple_usd,
+                         "xirr_usd": r.xirr_usd, "final_nzd": r.final_nzd,
+                         "multiple_nzd": r.multiple_nzd})
+    df = pd.DataFrame(rows)
+    df.to_csv(f"{outdir}/real_dip.csv", index=False)
+    print(f"[data] wrote {outdir}/real_dip.csv "
+          f"({len(df)} rows: {len(prices.columns)} tickers x {len(variants)} strategies)")
+    return df
+
+
+def print_real_dip(df: pd.DataFrame):
+    print("\n=== Sprint 9 — real scenario: even-daily DCA vs buy-the-dip (same NZD, same window) ===")
+    for t in df["ticker"].unique():
+        sub = df[df["ticker"] == t].set_index("strategy")
+        base_x = sub.at["even_daily", "xirr_usd"]
+        base_f = sub.at["even_daily", "final_usd"]
+        print(f"\n  {t}: NZ${sub.at['even_daily', 'invested_nzd']:,.0f} deployed daily, "
+              f"held to end")
+        for strat in sub.index:
+            r = sub.loc[strat]
+            tag = ("" if strat == "even_daily"
+                   else f"   Δ vs even ${r['final_usd'] - base_f:+,.0f}  "
+                        f"({(r['xirr_usd'] - base_x) * 1e4:+.1f}bp XIRR)")
+            dd = "" if strat == "even_daily" else f"{int(r['n_doubles']):>4d} doubles  "
+            print(f"    {strat:11s} {dd}${r['final_usd']:>10,.0f}  "
+                  f"({r['multiple_usd']:.2f}x)  XIRR {pct(r['xirr_usd'])}{tag}")
+    print("  (Same money, same window — only the intra-window timing differs. Compare the")
+    print("   dip delta to the Sprint 8b distribution: a few bp, swamped by everything else.)")
+
+
+# --------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="ETF backtest & DCA distribution study")
     ap.add_argument("--seed", type=int, default=SEED, help="RNG seed for random windows")
@@ -1086,9 +1146,11 @@ def main():
     print_cadence(prices)
     print_wife_downside(prices)
 
-    real = run_real_vs_dca(prices, load_series(FX_TICKER))
+    fx_series = load_series(FX_TICKER)
+    real = run_real_vs_dca(prices, fx_series)
     print_real_vs_dca(real)
     persist_real_vs_dca(real)
+    print_real_dip(real_dip_variants(prices, fx_series))
 
     print_weekday_anchor(weekday_anchor_study(prices, n=args.n, seed=args.seed))
     print_dip_double(dip_double_study(prices, n=args.n, seed=args.seed))

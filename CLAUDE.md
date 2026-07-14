@@ -124,6 +124,9 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 10. ✅ Dip double-down vs plain daily DCA (Sprint 8b — 2x on a ≤−1/−2/−3% day, skip next calm
     day: wins ~every paired window but only +0.1–0.4bp/yr ≈ <0.06% of terminal wealth; not
     worth manual effort). Dashboard tab "Buy the dip" (view8) from `results/dip_double.csv`.
+11. ✅ Dip strategy on the REAL scenario (Sprint 9 — same NZ$90k/window deployed daily,
+    even vs dip 1/2/3%: added only $40–270 on a $123–150k result, ≤~1bp/yr). Extends the
+    "My portfolio vs DCA" tab with a second table from `results/real_dip.csv`.
 
 Open: the user's actual per-deposit schedule (date, NZD amount — likely via an IBKR
 connector/Flex export) to replace Sprint 7's even-split assumption in `even_nzd_schedule`;
