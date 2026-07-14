@@ -127,6 +127,12 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 11. ✅ Dip strategy on the REAL scenario (Sprint 9 — same NZ$90k/window deployed daily,
     even vs dip 1/2/3%: added only $40–270 on a $123–150k result, ≤~1bp/yr). Extends the
     "My portfolio vs DCA" tab with a second table from `results/real_dip.csv`.
+12. ✅ Cadence variants on the real chart (Sprint 10 — the same NZ$90k/window into SPY/QQQ
+    under weekly/daily/dip −3%, all seven series (+ the actual portfolio) on the "My
+    portfolio vs DCA" chart & table). Curves overlap into two clusters: cadence moved the
+    result ≤~3bp/yr; the SPY-vs-QQQ gap and time-in-market moved it by multiples. Engine adds
+    `REAL_STRATEGIES`/`_real_strategy_schedule`; `results/real_vs_dca_*.csv` now carry six
+    curves + a keyed summary.
 
 Open: the user's actual per-deposit schedule (date, NZD amount — likely via an IBKR
 connector/Flex export) to replace Sprint 7's even-split assumption in `even_nzd_schedule`;
