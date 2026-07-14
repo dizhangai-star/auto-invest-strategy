@@ -25,6 +25,8 @@ SECTIONS = [
     ("results/sprint5_projection.md", None),
     ("results/sprint6_projection_fan.md", None),
     ("results/sprint7_real_vs_dca.md", None),
+    ("results/sprint8_timing.md", None),
+    ("results/sprint9_real_dip.md", None),
 ]
 OUT = "docs/index.html"          # GitHub Pages source: main branch /docs folder
 

@@ -523,6 +523,50 @@ def fig_real_vs_dca() -> tuple[go.Figure, str, dict]:
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 9 — would "buy the dip" have moved the real result? Reads results/real_dip.csv
+# (engine deployed the same NZD daily under even vs dip rules); table + delta vs even.
+# --------------------------------------------------------------------------------------
+DIP_LABELS = {"even_daily": "Even daily (baseline)", "dip1": "Dip 2× on ≤−1%",
+              "dip2": "Dip 2× on ≤−2%", "dip3": "Dip 2× on ≤−3%"}
+
+
+def real_dip_table() -> tuple[str, str]:
+    df = pd.read_csv("results/real_dip.csv")
+    rows, deltas = [], []
+    for t in TICKERS:
+        sub = df[df["ticker"] == t].set_index("strategy")
+        base_f, base_x = sub.at["even_daily", "final_usd"], sub.at["even_daily", "xirr_usd"]
+        for strat in ["even_daily", "dip1", "dip2", "dip3"]:
+            r = sub.loc[strat]
+            is_base = strat == "even_daily"
+            dfinal = r["final_usd"] - base_f
+            dbp = (r["xirr_usd"] - base_x) * 1e4
+            delta = "— baseline" if is_base else f"${dfinal:+,.0f} ({dbp:+.1f}bp)"
+            doubles = "—" if is_base else f"{int(r['n_doubles'])}"
+            rows.append(
+                f"<tr><td>{t}</td><td>{DIP_LABELS[strat]}</td><td>{doubles}</td>"
+                f"<td>${r['final_usd']:,.0f}</td><td>{r['multiple_usd']:.2f}x</td>"
+                f"<td>{pct(r['xirr_usd'])}</td><td>{delta}</td></tr>")
+            if not is_base:
+                deltas.append(dfinal)
+    table = ("<table class='cmp'><thead><tr><th>Ticker</th><th>Strategy</th>"
+             "<th>dip days</th><th>value now</th><th>multiple</th><th>XIRR</th>"
+             "<th>Δ vs even-daily</th></tr></thead><tbody>"
+             + "".join(rows) + "</tbody></table>")
+    note = (f"Same NZ$90k, same {REAL_DEPOSIT_START}→{REAL_DEPOSIT_END} window, deployed "
+            f"<strong>daily</strong> into each ticker — the only difference is whether a "
+            f"day closing ≤−1/−2/−3% buys double (funded by skipping a later calm day). "
+            f"<strong>Verdict: buy-the-dip barely registers.</strong> Across all six "
+            f"variants the tilt added ${min(deltas):,.0f}–${max(deltas):,.0f} on a "
+            f"$123k–150k result — at most ~1bp/yr of XIRR, the same rounding-error edge the "
+            f"Sprint 8b distribution found across 1,000 windows. The even-daily baseline "
+            f"itself lands within ~0.1% of Sprint 7's weekly DCA (cadence is a wash, "
+            f"Sprint 3). What decided this outcome was being in the market for the "
+            f"2019–2026 run, not the day-level timing of deposits.")
+    return table, note
+
+
+# --------------------------------------------------------------------------------------
 CSS = """
 * { box-sizing: border-box; }
 body { font: 16px/1.6 -apple-system, system-ui, sans-serif; color: #1a1a1a; background: #fcfcfb;
@@ -602,6 +646,7 @@ def build() -> str:
     f2 = fig_fan()
     proj_html = projection_section()
     f6, real_table, real_meta = fig_real_vs_dca()
+    dip_table, dip_note = real_dip_table()
     f3, spans = fig_cycles(prices)
     f7, weekday_notes = fig_weekday()
     f8, dip_notes = fig_dip()
@@ -678,6 +723,9 @@ further buys</strong> to {real_meta['asof']}. All numbers from the committed
 <code>results/real_vs_dca_*.csv</code>.</p>
 {real_table}
 {div(f6, 6)}
+<h3 style="font-size:1.05rem;margin:1.4rem 0 .3rem;">Would "buy the dip" have helped here?</h3>
+<p class="note">{dip_note}</p>
+{dip_table}
 <div class="warn"><strong>Read honestly:</strong> the deposit schedule is an even-split
 approximation — the real deposits were lumpy, and timing through 2020/2022 could move the
 sim result materially, so the actual-portfolio XIRR is <em>approximate</em>. SPY/QQQ are

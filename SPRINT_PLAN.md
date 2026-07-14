@@ -362,9 +362,47 @@ python3 build_dashboard.py`, network off)*: even weekly DCA on the same deposits
 a ~9–14 %/yr money-weighted gap. Honesty framing in `results/sprint7_real_vs_dca.md`:
 even-split approximation, hindsight benchmark choice, single-end-point actual path.
 
+## Sprint 8 / 8b — Buy-timing sensitivity: weekday anchor + dip double-down  ✅ SHIPPED
+
+Two timing studies prompted by "does *when* in the week / news cycle I buy matter?" Both
+land the same way: intra-period timing moves outcomes by basis points; start-date luck moves
+them by percentage points.
+
+**Sprint 8 — buy day of week:** re-run the weekly DCA anchored Mon–Fri (holiday rolls
+forward within the week, back only for a Fri closure). `weekday_buy_dates` /
+`weekday_anchor_study`; 1,000 paired 18-yr windows (seed 42) under all five anchors →
+`results/weekday_anchor.csv`, dashboard tab **Buy day of week** (view7).
+
+**Sprint 8b — dip double-down:** daily $100 DCA that buys 2× on a close ≤ −1/−2/−3% and skips
+the next calm day (skip-credit queue, cash-flow-neutral). `dip_buy_schedule` /
+`dip_double_study`; `simulate_dca` generalized to accept precomputed buys + a per-buy amount
+Series (scalar path regression-checked) → `results/dip_double.csv`, dashboard tab **Buy the
+dip** (view8).
+
+**Result** *(reproduce network-off)*: best-vs-worst weekday ≈ **1.3–1.9bp/yr median** (max
+3.0bp) vs ~500bp start-date luck; Monday best in 92–97% of windows ("weekend effect"). Dip
+tilt beats plain daily in **100%** of windows but only **+0.1–0.4bp/yr** (<0.06% of terminal
+wealth); rarer triggers gain less. Both verdicts: automate a boring schedule, ignore the
+calendar and red days. Snapshot `results/sprint8_timing.md`.
+
+## Sprint 9 — Dip double-down on the *real* scenario  ✅ SHIPPED
+
+Applies the Sprint 8b rule to Sprint 7's actual-portfolio scenario: the same NZ$90k over the
+same 2019-02-25 → 2024-10-11 window, deployed **daily** into SPY/QQQ under even-daily vs dip
+1/2/3%, NZD→USD at daily spot, held to 2026-07-10. `real_dip_variants` reuses
+`dip_buy_schedule` + `simulate_nzd_dca_hold` so only deposit timing varies →
+`results/real_dip.csv`; extends the **My portfolio vs DCA** tab with a second table (real
+panel only — all other tabs byte-identical).
+
+**Result** *(reproduce network-off)*: the dip tilt added **$39–274** on a $123k–150k result
+(≤ ~1bp/yr) — the same rounding-error edge as the window distribution. Being invested for the
+2019–2026 run decided it, not deposit timing. Snapshot `results/sprint9_real_dip.md`. Flagged
+follow-up: the *stronger* buy-the-dip (hold a cash reserve, deploy a lump into a −20%/−30%
+drawdown) is a different, riskier strategy — cash drag vs discount — not yet modelled.
+
 ## Next session
 
-**All planned sprints (0–7, plus the 5b layout pass) are shipped and the site is live.**
+**All sprints (0–9, plus the 5b layout pass) are shipped and the site is live.**
 Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
@@ -379,10 +417,17 @@ Nothing required remains.
   elapsed years from the same factors, no engine change).
 - **Sprint 7 is shipped** (real portfolio vs simulated SPY/QQQ weekly DCA — accumulate-then-
   hold sim, `results/real_vs_dca_*.csv` contract, "My portfolio vs DCA" dashboard tab).
+- **Sprints 8/8b/9 are shipped** (buy-timing studies — weekday anchor, dip double-down, and
+  the dip applied to the real scenario; `results/weekday_anchor.csv`, `dip_double.csv`,
+  `real_dip.csv`; dashboard tabs **Buy day of week** / **Buy the dip** + the real-panel dip
+  table). Headline: timing tweaks are basis points, not the lever.
 - **Remaining candidate work (optional, not committed):**
   - Sprint 7 fidelity upgrade: export the user's actual per-deposit schedule (date, NZD
     amount) — likely via an IBKR connector/Flex export — and drop it into
     `even_nzd_schedule`'s slot in `run_real_vs_dca`, replacing the even-split assumption.
+  - Stronger buy-the-dip (follow-up to Sprint 9): hold a cash reserve and deploy a lump into
+    a drawdown-from-peak trigger (−10%/−20%/−30%), modelling the cash-drag-vs-discount
+    tradeoff — the version with real timing risk, unlike the self-funded daily rule.
   - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
     toggle) if the static section proves insufficient.
   - Sequence-of-returns / withdrawal phase — still genuinely out of scope; becomes relevant
