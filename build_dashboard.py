@@ -472,9 +472,16 @@ def projection_section() -> str:
 # Reads only the committed real_vs_dca_*.csv contract; the comparison numbers are the
 # engine's, never recomputed here.
 # --------------------------------------------------------------------------------------
+# Sprint 10 — the three deployment cadences shown per ticker on the real chart: same
+# money, same window, only the timing differs (weekly solid, daily dashed, dip dotted).
+REAL_STRATS = [("weekly", "weekly", "solid", 2.4),
+               ("daily", "daily", "dash", 1.5),
+               ("dip", "dip −3%", "dot", 1.5)]
+
+
 def fig_real_vs_dca() -> tuple[go.Figure, str, dict]:
     ts = pd.read_csv("results/real_vs_dca_timeseries.csv", parse_dates=["date"])
-    summ = pd.read_csv("results/real_vs_dca_summary.csv").set_index("label")
+    summ = pd.read_csv("results/real_vs_dca_summary.csv").set_index("key")
     real = summ.loc["REAL"]
     asof = ts["date"].iloc[-1]
 
@@ -485,10 +492,12 @@ def fig_real_vs_dca() -> tuple[go.Figure, str, dict]:
                   annotation_text="deposits stop", annotation_position="top left",
                   annotation_font_size=11)
     for t in TICKERS:
-        fig.add_trace(go.Scatter(
-            x=ts["date"], y=ts[f"value_{t}_usd"], name=f"{t} (simulated DCA)",
-            line=dict(color=COLORS[t], width=2),
-            hovertemplate=f"{t} $%{{y:,.0f}} on %{{x|%Y-%m-%d}}<extra></extra>"))
+        for strat, slabel, dash, width in REAL_STRATS:
+            fig.add_trace(go.Scatter(
+                x=ts["date"], y=ts[f"value_{t}_{strat}_usd"],
+                name=f"{t} · {slabel}", legendgroup=t,
+                line=dict(color=COLORS[t], width=width, dash=dash),
+                hovertemplate=f"{t} {slabel} $%{{y:,.0f}} on %{{x|%Y-%m-%d}}<extra></extra>"))
     fig.add_trace(go.Scatter(
         x=ts["date"], y=ts["invested_usd_cum"], name="money put in (USD)",
         line=dict(color="#7a7a76", width=1.6, dash="dash"),
@@ -502,23 +511,27 @@ def fig_real_vs_dca() -> tuple[go.Figure, str, dict]:
     fig.update_yaxes(title_text="portfolio value ($, nominal USD, pre-tax)", tickprefix="$",
                      rangemode="tozero")
     fig.update_layout(height=480, hovermode="x unified",
-                      legend=dict(orientation="h", y=1.1, x=0))
+                      legend=dict(orientation="h", y=1.12, x=0))
 
-    rows = []
-    for label in ["REAL", "SPY", "QQQ"]:
-        r = summ.loc[label]
-        name = "My portfolio (actual)" if label == "REAL" else f"{label} (simulated DCA)"
-        xirr_txt = pct(r["xirr_usd"]) + (" <em>(approx)</em>" if label == "REAL" else "")
-        rows.append(f"<tr><td>{name}</td><td>${r['invested_usd']:,.0f}</td>"
-                    f"<td>${r['final_usd']:,.0f}</td><td>{r['multiple_usd']:.2f}x</td>"
-                    f"<td>{xirr_txt}</td><td>NZ${r['final_nzd']:,.0f}</td>"
-                    f"<td>{r['multiple_nzd']:.2f}x</td></tr>")
+    rows = [f"<tr><td><strong>My portfolio (actual)</strong></td>"
+            f"<td>${real['invested_usd']:,.0f}</td><td>${real['final_usd']:,.0f}</td>"
+            f"<td>{real['multiple_usd']:.2f}x</td>"
+            f"<td>{pct(real['xirr_usd'])} <em>(approx)</em></td>"
+            f"<td>NZ${real['final_nzd']:,.0f}</td><td>{real['multiple_nzd']:.2f}x</td></tr>"]
+    for t in TICKERS:
+        for strat, slabel, _dash, _w in REAL_STRATS:
+            r = summ.loc[f"{t}_{strat}"]
+            rows.append(f"<tr><td>{t} · {slabel} DCA</td><td>${r['invested_usd']:,.0f}</td>"
+                        f"<td>${r['final_usd']:,.0f}</td><td>{r['multiple_usd']:.2f}x</td>"
+                        f"<td>{pct(r['xirr_usd'])}</td><td>NZ${r['final_nzd']:,.0f}</td>"
+                        f"<td>{r['multiple_nzd']:.2f}x</td></tr>")
     table = ("<table class='cmp'><thead><tr><th></th><th>USD deployed</th>"
              f"<th>value {asof.date()}</th><th>USD multiple</th><th>XIRR (USD)</th>"
              "<th>NZD-terms value</th><th>NZD multiple</th></tr></thead><tbody>"
              + "".join(rows) + "</tbody></table>")
-    meta = {"n_buys": int(real["n_buys"]), "weekly_nzd": real["weekly_nzd"],
-            "invested_nzd": real["weekly_nzd"] * real["n_buys"], "asof": asof.date()}
+    meta = {"n_buys": int(real["n_buys"]),
+            "weekly_nzd": real["invested_nzd"] / real["n_buys"],
+            "invested_nzd": real["invested_nzd"], "asof": asof.date()}
     return fig, table, meta
 
 
@@ -715,14 +728,21 @@ evidence.</p>
 <section class="panel" id="real">
 <h2>My real portfolio vs the same money drip-fed into SPY/QQQ</h2>
 <p class="note">Validation of a real track record: NZ${real_meta['invested_nzd']:,.0f} of
-actual deposits ({REAL_DEPOSIT_START} → {REAL_DEPOSIT_END}) modelled as
-{real_meta['n_buys']} <strong>even weekly buys</strong> of NZ${real_meta['weekly_nzd']:,.2f},
-each converted at that week's NZDUSD spot (<strong>0% FX fee</strong> — the real IBKR-scale
-cost), buying the week's first trading-day total-return close, then <strong>held with no
-further buys</strong> to {real_meta['asof']}. All numbers from the committed
+actual deposits ({REAL_DEPOSIT_START} → {REAL_DEPOSIT_END}), each converted at NZDUSD spot
+(<strong>0% FX fee</strong> — the real IBKR-scale cost), then <strong>held with no further
+buys</strong> to {real_meta['asof']}. The same money is deployed into SPY and QQQ under three
+cadences: <strong>weekly</strong> (solid — {real_meta['n_buys']} even buys of
+NZ${real_meta['weekly_nzd']:,.2f}), <strong>daily</strong> (dashed — even over every trading
+day), and <strong>buy-the-dip</strong> (dotted — daily, doubling on a close ≤ −3% and
+skipping a later calm day). All numbers from the committed
 <code>results/real_vs_dca_*.csv</code>.</p>
 {real_table}
 {div(f6, 6)}
+<p class="note">The three cadences for a given ticker deploy the same NZD into the same
+window, so their curves sit almost exactly on top of each other — two clusters, not six
+distinct lines. That overlap <em>is</em> the finding: timing (weekly vs daily vs dip) moves
+the result by basis points; being in the market for the run is what moved it by multiples.
+The deltas are legible in the table above and quantified per-threshold below.</p>
 <h3 style="font-size:1.05rem;margin:1.4rem 0 .3rem;">Would "buy the dip" have helped here?</h3>
 <p class="note">{dip_note}</p>
 {dip_table}
