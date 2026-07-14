@@ -118,6 +118,12 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 8. ✅ Real-portfolio validation — the user's actual NZ$90k of deposits (2019–2024) vs an
    even weekly DCA into SPY/QQQ, accumulate-then-hold, own dashboard tab reading
    `results/real_vs_dca_*.csv` (Sprint 7).
+9. ✅ Buy day-of-week sensitivity (Sprint 8 — Mon–Fri anchors, paired windows: best-vs-worst
+   day ≈ 1–3bp/yr vs ~500bp of start-date luck; pick the day that suits your payroll).
+   Dashboard tab "Buy day of week" (view7) from `results/weekday_anchor.csv`.
+10. ✅ Dip double-down vs plain daily DCA (Sprint 8b — 2x on a ≤−1/−2/−3% day, skip next calm
+    day: wins ~every paired window but only +0.1–0.4bp/yr ≈ <0.06% of terminal wealth; not
+    worth manual effort). Dashboard tab "Buy the dip" (view8) from `results/dip_double.csv`.
 
 Open: the user's actual per-deposit schedule (date, NZD amount — likely via an IBKR
 connector/Flex export) to replace Sprint 7's even-split assumption in `even_nzd_schedule`;
