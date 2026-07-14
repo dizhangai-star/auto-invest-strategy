@@ -5,6 +5,8 @@ A COMMUNICATION layer, not new evidence. It reads the committed artifacts:
   - results/windows_<scenario>_<ticker>.csv  (Sprint 1 data contract: one row per window)
   - results/fan_<scenario>_<ticker>.csv      (p10/p50/p90 wealth-multiple trajectories)
   - results/projection_factors.csv           (Sprint 5 calculator factors, per-year 1..18)
+  - results/real_vs_dca_timeseries.csv       (Sprint 7: weekly sim value + invested cum)
+  - results/real_vs_dca_summary.csv          (Sprint 7: REAL/SPY/QQQ comparison rows)
   - data/<TICKER>.csv                        (offline total-return prices)
 and NEVER re-simulates the distribution — so its numbers cannot drift from the
 committed results/ tables. The only computation here is presentational: bear-market
@@ -24,8 +26,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from backtest import (BABY_YEARS, FX_FEE, RANDOM_N, WEEKLY_CONTRIB, WIFE_LUMP,
-                      WIFE_MONTHLY, WIFE_YEARS, _contribution_dates, simulate_dca, pct)
+from backtest import (BABY_YEARS, FX_FEE, RANDOM_N, REAL_DEPOSIT_END, REAL_DEPOSIT_START,
+                      WEEKLY_CONTRIB, WIFE_LUMP, WIFE_MONTHLY, WIFE_YEARS,
+                      _contribution_dates, simulate_dca, pct)
 
 OUT = "results/dashboard.html"
 TICKERS = ["QQQ", "SPY"]
@@ -366,6 +369,61 @@ def projection_section() -> str:
 
 
 # --------------------------------------------------------------------------------------
+# Sprint 7 — my real portfolio vs the same NZD deposits drip-fed weekly into SPY/QQQ.
+# Reads only the committed real_vs_dca_*.csv contract; the comparison numbers are the
+# engine's, never recomputed here.
+# --------------------------------------------------------------------------------------
+def fig_real_vs_dca() -> tuple[go.Figure, str, dict]:
+    ts = pd.read_csv("results/real_vs_dca_timeseries.csv", parse_dates=["date"])
+    summ = pd.read_csv("results/real_vs_dca_summary.csv").set_index("label")
+    real = summ.loc["REAL"]
+    asof = ts["date"].iloc[-1]
+
+    fig = go.Figure()
+    # milliseconds, not Timestamp: plotly's vline annotation helper can't average datetimes
+    fig.add_vline(x=pd.Timestamp(REAL_DEPOSIT_END).timestamp() * 1000,
+                  line=dict(color="#888", width=1, dash="dot"),
+                  annotation_text="deposits stop", annotation_position="top left",
+                  annotation_font_size=11)
+    for t in TICKERS:
+        fig.add_trace(go.Scatter(
+            x=ts["date"], y=ts[f"value_{t}_usd"], name=f"{t} (simulated DCA)",
+            line=dict(color=COLORS[t], width=2),
+            hovertemplate=f"{t} $%{{y:,.0f}} on %{{x|%Y-%m-%d}}<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=ts["date"], y=ts["invested_usd_cum"], name="money put in (USD)",
+        line=dict(color="#7a7a76", width=1.6, dash="dash"),
+        hovertemplate="put in $%{y:,.0f} by %{x|%Y-%m-%d}<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=[asof], y=[real["final_usd"]], mode="markers+text", name="my portfolio (actual)",
+        marker=dict(color="#1a1a1a", size=11, symbol="diamond"),
+        text=[f"actual ${real['final_usd']:,.0f}"], textposition="middle left",
+        textfont=dict(size=12),
+        hovertemplate="actual $%{y:,.2f} on %{x|%Y-%m-%d}<extra></extra>"))
+    fig.update_yaxes(title_text="portfolio value ($, nominal USD, pre-tax)", tickprefix="$",
+                     rangemode="tozero")
+    fig.update_layout(height=480, hovermode="x unified",
+                      legend=dict(orientation="h", y=1.1, x=0))
+
+    rows = []
+    for label in ["REAL", "SPY", "QQQ"]:
+        r = summ.loc[label]
+        name = "My portfolio (actual)" if label == "REAL" else f"{label} (simulated DCA)"
+        xirr_txt = pct(r["xirr_usd"]) + (" <em>(approx)</em>" if label == "REAL" else "")
+        rows.append(f"<tr><td>{name}</td><td>${r['invested_usd']:,.0f}</td>"
+                    f"<td>${r['final_usd']:,.0f}</td><td>{r['multiple_usd']:.2f}x</td>"
+                    f"<td>{xirr_txt}</td><td>NZ${r['final_nzd']:,.0f}</td>"
+                    f"<td>{r['multiple_nzd']:.2f}x</td></tr>")
+    table = ("<table class='cmp'><thead><tr><th></th><th>USD deployed</th>"
+             f"<th>value {asof.date()}</th><th>USD multiple</th><th>XIRR (USD)</th>"
+             "<th>NZD-terms value</th><th>NZD multiple</th></tr></thead><tbody>"
+             + "".join(rows) + "</tbody></table>")
+    meta = {"n_buys": int(real["n_buys"]), "weekly_nzd": real["weekly_nzd"],
+            "invested_nzd": real["weekly_nzd"] * real["n_buys"], "asof": asof.date()}
+    return fig, table, meta
+
+
+# --------------------------------------------------------------------------------------
 CSS = """
 * { box-sizing: border-box; }
 body { font: 16px/1.6 -apple-system, system-ui, sans-serif; color: #1a1a1a; background: #fcfcfb;
@@ -396,6 +454,10 @@ p { color: #333; max-width: 62rem; }
 .projstats .stat b { font-size: 1.3rem; display: block; }
 .projstats .stat { font-size: .85rem; color: #52514e; }
 .projred { color: #c0392b; font-weight: 600; }
+table.cmp { border-collapse: collapse; margin: .8rem 0; font-size: .92rem; }
+table.cmp th, table.cmp td { border: 1px solid #ddd; padding: .35rem .7rem; text-align: right; }
+table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
+table.cmp thead { background: #f4f4f2; }
 @media (max-width: 800px) {
   body { flex-direction: column; }
   main { margin: 0; }
@@ -411,6 +473,7 @@ p { color: #333; max-width: 62rem; }
 PANELS = [("distribution", "Outcome distribution"),
           ("fan", "Percentile fan"),
           ("calculator", "Projection calculator"),
+          ("real", "My portfolio vs DCA"),
           ("cycles", "Bull/bear cycles"),
           ("orders", "One path (illustrative)")]
 
@@ -437,6 +500,7 @@ def build() -> str:
     f1, dist_notes = fig_distribution()
     f2 = fig_fan()
     proj_html = projection_section()
+    f6, real_table, real_meta = fig_real_vs_dca()
     f3, spans = fig_cycles(prices)
     f4 = fig_orders(prices["QQQ"])
     worst = min(spans, key=lambda s: s["depth"])
@@ -498,6 +562,25 @@ Outcome distribution view, so the Baby preset reproduces
 <strong>range</strong>; the assumed-rate figure is a labelled intuition check, not
 evidence.</p>
 {proj_html}
+</section>
+
+<section class="panel" id="real">
+<h2>My real portfolio vs the same money drip-fed into SPY/QQQ</h2>
+<p class="note">Validation of a real track record: NZ${real_meta['invested_nzd']:,.0f} of
+actual deposits ({REAL_DEPOSIT_START} → {REAL_DEPOSIT_END}) modelled as
+{real_meta['n_buys']} <strong>even weekly buys</strong> of NZ${real_meta['weekly_nzd']:,.2f},
+each converted at that week's NZDUSD spot (<strong>0% FX fee</strong> — the real IBKR-scale
+cost), buying the week's first trading-day total-return close, then <strong>held with no
+further buys</strong> to {real_meta['asof']}. All numbers from the committed
+<code>results/real_vs_dca_*.csv</code>.</p>
+{real_table}
+{div(f6, 6)}
+<div class="warn"><strong>Read honestly:</strong> the deposit schedule is an even-split
+approximation — the real deposits were lumpy, and timing through 2020/2022 could move the
+sim result materially, so the actual-portfolio XIRR is <em>approximate</em>. SPY/QQQ are
+benchmarks picked <em>after</em> a decade they dominated (hindsight); a diversified or
+stock-picking portfolio carries different risk. The actual portfolio is a single end point —
+its path between deposits is unknown. Everything here is nominal USD, pre-tax.</div>
 </section>
 
 <section class="panel" id="cycles">
