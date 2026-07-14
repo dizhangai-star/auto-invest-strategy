@@ -19,7 +19,10 @@ bookmarkable). It includes an **interactive projection calculator** (its own tab
 cadence, horizon, lump, FX fee and QQQ/SPY mix are recomputed client-side from the committed
 `results/projection_factors.csv` (per-window linear factors from the engine) — p10/p50/p90
 final values across 1,000 historical start dates, never a single flattering number, plus a
-fan chart of the p10–p90 value range over the years en route (vs money put in).
+fan chart of the p10–p90 value range over the years en route (vs money put in). A
+**My portfolio vs DCA** tab (Sprint 7) validates a real track record — actual NZD deposits
+(2019–2024) vs the same money drip-fed weekly into SPY/QQQ, from the committed
+`results/real_vs_dca_*.csv`.
 
 Your machine has open internet, so `yfinance` pulls real total-return history for you.
 (The Claude web sandbox can't reach Yahoo Finance, which is why this is built to run locally.)
@@ -54,7 +57,8 @@ If `yfinance` is ever blocked, drop CSVs at `data/SPY.csv`, `data/QQQ.csv`
 
 ## Sensible next steps
 
-- Add `QQQM` (2020+) and `VOO` to confirm the cheaper share classes track their twins.
-- Add the NZDUSD overlay to see the currency contribution to the baby's variance.
-- Add a `--seed`/randomized start-date study (e.g. 1,000 random 18-year windows) to see the
-  *distribution* of outcomes, not a single path — far more honest than one backtest line.
+All of the originally planned extensions have shipped — the randomized start-date study
+(Sprint 1), the QQQM/VOO tracking check and NZDUSD overlay (Sprint 2), the after-tax layer
+(Sprint 3), the dashboard and calculator (Sprints 4–6), and the real-portfolio validation
+(Sprint 7). See `SPRINT_PLAN.md` for results and the remaining optional candidates (e.g.
+replacing Sprint 7's even-split assumption with the actual per-deposit schedule).

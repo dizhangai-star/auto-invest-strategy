@@ -377,7 +377,12 @@ Nothing required remains.
   portfolio numbers whenever provided).
 - **Sprint 6 is shipped** (projection fan graph in the calculator — p10/p50/p90 value vs
   elapsed years from the same factors, no engine change).
+- **Sprint 7 is shipped** (real portfolio vs simulated SPY/QQQ weekly DCA — accumulate-then-
+  hold sim, `results/real_vs_dca_*.csv` contract, "My portfolio vs DCA" dashboard tab).
 - **Remaining candidate work (optional, not committed):**
+  - Sprint 7 fidelity upgrade: export the user's actual per-deposit schedule (date, NZD
+    amount) — likely via an IBKR connector/Flex export — and drop it into
+    `even_nzd_schedule`'s slot in `run_real_vs_dca`, replacing the even-split assumption.
   - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
     toggle) if the static section proves insufficient.
   - Sequence-of-returns / withdrawal phase — still genuinely out of scope; becomes relevant
