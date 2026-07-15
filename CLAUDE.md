@@ -127,7 +127,13 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
 11. ✅ Dip strategy on the REAL scenario (Sprint 9 — same NZ$90k/window deployed daily,
     even vs dip 1/2/3%: added only $40–270 on a $123–150k result, ≤~1bp/yr). Extends the
     "My portfolio vs DCA" tab with a second table from `results/real_dip.csv`.
-12. ✅ FIF calculator for the baby's account (Sprint 10 — added to the Projection calculator
+12. ✅ Cadence variants on the real chart (Sprint 10 — the same NZ$90k/window into SPY/QQQ
+    under weekly/daily/dip −3%, all seven series (+ the actual portfolio) on the "My
+    portfolio vs DCA" chart & table). Curves overlap into two clusters: cadence moved the
+    result ≤~3bp/yr; the SPY-vs-QQQ gap and time-in-market moved it by multiples. Engine adds
+    `REAL_STRATEGIES`/`_real_strategy_schedule`; `results/real_vs_dca_*.csv` now carry six
+    curves + a keyed summary.
+13. ✅ FIF calculator for the baby's account (Sprint 11 — added to the Projection calculator
     tab, below the projection): (a) when cumulative NZD **cost basis** crosses the NZ$50k
     de-minimis (pure arithmetic on deposits — cost, not market value, so buy-only DCA still
     triggers it), and (b) the annual **FDR** tax per NZ tax year once FIF applies (5% of the

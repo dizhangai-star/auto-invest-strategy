@@ -400,7 +400,36 @@ panel only — all other tabs byte-identical).
 follow-up: the *stronger* buy-the-dip (hold a cash reserve, deploy a lump into a −20%/−30%
 drawdown) is a different, riskier strategy — cash drag vs discount — not yet modelled.
 
-## Sprint 10 — FIF calculator for the baby's account  ✅ SHIPPED *(Calculator tab; no engine/CSV change)*
+## Sprint 10 — Weekly vs daily vs dip on the *real* chart  ✅ SHIPPED
+
+Puts all three deployment cadences on the same **My portfolio vs DCA** chart: the same
+NZ$90k / same 2019→2024 window into SPY/QQQ under **weekly** (Sprint 7), **daily**, and
+**buy-the-dip −3%** (the Sprint 8b rule) — seven series total with the actual portfolio.
+`run_real_vs_dca` now loops `REAL_STRATEGIES` via `_real_strategy_schedule` (weekly =
+even-weekly grid, daily = even over trading days, dip = `dip_buy_schedule` at
+`REAL_DIP_THRESHOLD`), reusing `simulate_nzd_dca_hold`; `results/real_vs_dca_*.csv` now carry
+six value curves + a **keyed** summary (`key`/`ticker`/`strategy`, was `label`). Chart plots
+weekly solid / daily dashed / dip dotted per ticker + the extended table; the Sprint 9 dip
+table stays below. Snapshot `results/sprint10_real_strategies.md`.
+
+**Result** *(reproduce network-off)*: the three cadences per ticker land within ~0.15%
+(≤ ~3bp/yr XIRR), so the curves collapse into two clusters, not six lines — cadence moved the
+result by basis points; the SPY-vs-QQQ gap and time-in-market moved it by multiples. Weekly
+edges daily by a hair (deploys marginally earlier in a rising decade).
+
+**Learnings validated this session** (analysis only, not committed artifacts):
+- *Why buy-the-dip barely helps*: the self-funding rule re-times exactly one `base` per dip
+  over ~1 trading day (dip day → next calm day). Edge = `base × (1/P_dip − 1/P_skip)`, a coin
+  flip that only wins when the dip day is the local low — often it isn't (the drop continues
+  into the skipped day). Ties out to the cent on a 2026-YTD QQQ decomposition.
+- *No implementable timing rule beats income-DCA on the same path*: a same-window bake-off
+  (QQQ 2026 YTD, $1k/day) found every realistic "hold cash, wait for a dip" rule **loses** to
+  plain daily DCA (cash drag on a rising path — a −5% trigger never fired and sat in cash at
+  1.00×). Only an **upfront lump** (needs the cash, strictly higher risk) or **hindsight**
+  wins — and both flip to losers on a falling path. Reinforces: for income-based DCA,
+  "deploy every dollar the day it arrives" is already the most-invested-earliest you can be.
+
+## Sprint 11 — FIF calculator for the baby's account  ✅ SHIPPED *(Calculator tab; no engine/CSV change)*
 
 Prompted by a real question: as the baby's Hatch Kids QQQM holding approaches the NZ$50k FIF
 de-minimis, does "buy but never sell" avoid tax, and if not, how much per NZ tax year? Answer
@@ -432,7 +461,7 @@ confirm with an NZ accountant/IRD.
 
 ## Next session
 
-**All sprints (0–10, plus the 5b layout pass) are shipped and the site is live.**
+**All sprints (0–11, plus the 5b layout pass) are shipped and the site is live.**
 Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
@@ -451,7 +480,11 @@ Nothing required remains.
   the dip applied to the real scenario; `results/weekday_anchor.csv`, `dip_double.csv`,
   `real_dip.csv`; dashboard tabs **Buy day of week** / **Buy the dip** + the real-panel dip
   table). Headline: timing tweaks are basis points, not the lever.
-- **Sprint 10 is shipped** (FIF calculator on the Calculator tab — NZ$50k cost-basis crossing +
+- **Sprint 10 is shipped** (weekly/daily/dip cadences on the real chart — seven series on the
+  **My portfolio vs DCA** tab; `results/real_vs_dca_*.csv` now carry six curves + a keyed
+  summary). Headline: cadence collapses into two clusters; no cash-matched timing rule beat
+  income-DCA on the path.
+- **Sprint 11 is shipped** (FIF calculator on the Calculator tab — NZ$50k cost-basis crossing +
   annual FDR tax as a p10/p50/p90 range via the projection's `horizonStats`; `fif_section()` in
   `build_dashboard.py`, no engine/CSV change). Headline: buy-and-hold does not defer FIF, and the
   child (not Hatch) is the taxpayer.
@@ -461,7 +494,9 @@ Nothing required remains.
     `even_nzd_schedule`'s slot in `run_real_vs_dca`, replacing the even-split assumption.
   - Stronger buy-the-dip (follow-up to Sprint 9): hold a cash reserve and deploy a lump into
     a drawdown-from-peak trigger (−10%/−20%/−30%), modelling the cash-drag-vs-discount
-    tradeoff — the version with real timing risk, unlike the self-funded daily rule.
+    tradeoff — the version with real timing risk, unlike the self-funded daily rule. A
+    single-path sanity check (Sprint 10 learnings) already found cash drag loses on a rising
+    window; a committed multi-window study over 1,000 random paths remains the open piece.
   - Extend the dashboard with Sprint 3's after-tax overlay (interactive PIR-rate / PIE-vs-FIF
     toggle) if the static section proves insufficient.
   - Sequence-of-returns / withdrawal phase — still genuinely out of scope; becomes relevant
