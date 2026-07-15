@@ -468,6 +468,152 @@ def projection_section() -> str:
 
 
 # --------------------------------------------------------------------------------------
+# FIF estimator — (a) when the baby's NZD cost basis crosses NZ$50k, and (b) the annual
+# FDR tax bill each NZ tax year once FIF applies.
+#
+# (a) is pure client-side arithmetic on the user's own inputs; (b) reuses the projection
+# calculator's committed window factors (via its global horizonStats), no second engine.
+# (a) De-minimis is tested on ACQUISITION COST (NZD), not market value — for a buy-only DCA
+#     the running cost basis is the cumulative NZD deposited; the exemption holds while cost
+#     is "$50,000 or less at all times in the year", so FIF starts the first deposit that
+#     takes cumulative cost strictly ABOVE the threshold.
+# (b) Once FIF applies, FDR income = 5% of the holding's MARKET VALUE on 1 April (tax-year
+#     open), taxed at the child's own progressive rates (assumed her only income). Opening
+#     value per year is the SAME p10/p50/p90 window distribution as the fan above — we call
+#     horizonStats(freq, y, ...) for elapsed year y and take 5% of each percentile. So the
+#     tax bill is a bad-decade / median / lucky-start range, not one assumed-rate line.
+# Plain template string (an f-string would fight the JS braces); nothing to substitute.
+# --------------------------------------------------------------------------------------
+_FIF_TEMPLATE = """
+<h3 style="font-size:1.05rem;margin:1.6rem 0 .3rem;">FIF for the baby's account — crossing
+date &amp; the annual tax bill</h3>
+<p class="note">This reuses the <strong>deposit, cadence, horizon, lump, FX fee and QQQ/SPY
+mix from the calculator above</strong> (read as NZD — Hatch deposits are NZD) and adds only the
+FIF-specific inputs below. It shows <strong>(1)</strong> when cumulative NZD cost crosses NZ$50k
+(de-minimis is on <em>cost</em>, not value, so for a buy-only DCA that's just your deposits) and
+<strong>(2)</strong> the deemed-5% <strong>FDR</strong> tax each NZ tax year once FIF applies
+&mdash; 5% of the holding's <em>market value on 1 April</em>, at her own progressive rates, owed
+whether or not you sell. Each year's opening value uses the <strong>same p10/p50/p90 window
+distribution as the fan above</strong>, so the tax is a bad-decade&nbsp;/&nbsp;median&nbsp;/&nbsp;lucky-start
+range &mdash; not a single assumed rate.</p>
+<div class="projform" id="fif_form">
+  <label>already contributed NZ$<input id="fif_have" type="number" min="0" step="500" value="0"></label>
+  <label>threshold NZ$<input id="fif_thr" type="number" min="0" step="1000" value="50000"></label>
+  <label>starting <input id="fif_start" type="date"></label>
+</div>
+<div id="fif_out"></div>
+<div id="fif_table"></div>
+<div class="warn" style="margin-top:.6rem"><strong>Illustration, not a forecast or tax advice.</strong>
+Opening values are the same historical <em>p10&nbsp;/&nbsp;p50&nbsp;/&nbsp;p90</em> windows as the fan
+above (bad decade / median / lucky start) &mdash; each column is its own set of ~1,000 start dates,
+<em>not one path</em>, so reading a whole row as "your year" overstates the spread. FDR still taxes
+5% of the 1-April value even in a year the market later crashes (an individual may elect the
+<em>Comparative Value</em> method and pay the lower). Tax is at the child's own progressive rates
+assuming FIF is her <em>only</em> income; a bare-trust structure could mean a flat rate instead. The
+per-column totals assume you sit at that <em>same</em> percentile every year &mdash; an extreme, not a
+real path. Cost counts gross deposits (conservative on the crossing date); the $50k is <em>per
+taxpayer, aggregated across all her accounts</em>. Confirm structure and numbers with an NZ
+accountant or IRD.</div>
+<script>
+(function(){
+  const g=id=>document.getElementById(id);
+  const fmtNZ=x=>"NZ$"+Math.round(x).toLocaleString("en-US");
+  const st=g("fif_start"); if(!st.value) st.value=new Date().toISOString().slice(0,10);
+  // NZ individual rates (2025-26), progressive; child's FIF income assumed her only income.
+  const BRACKETS=[[15600,0.105],[53500,0.175],[78100,0.30],[180000,0.33],[Infinity,0.39]];
+  function progTax(inc){let t=0,prev=0;for(const [cap,rate] of BRACKETS){
+    if(inc>cap){t+=(cap-prev)*rate;prev=cap;}else{t+=(inc-prev)*rate;break;}}return t;}
+  const trip=(a,b,c)=>fmtNZ(a)+" &middot; "+fmtNZ(b)+" &middot; "+fmtNZ(c);
+  function calc(){
+    // Shared plan inputs read live from the projection calculator's form above.
+    const amt=+g("proj_amount").value||0, per=g("proj_freq").value;
+    const lump=+g("proj_lump").value||0, fee=(+g("proj_fee").value||0)/100;
+    const wq=(+g("proj_qqq").value)/100, ws=1-wq;
+    const hv=+g("proj_hval").value||0, hu=g("proj_hunit").value;
+    const yrs=Math.max(1,Math.round(hu==="years"?hv:(hu==="months"?hv/12:hv/52)));
+    const have=+g("fif_have").value||0, thr=+g("fif_thr").value||0;
+    const C0=have+lump;                  // upfront cost basis: prior contributions + lump
+    const out=g("fif_out"), tbl=g("fif_table");
+    const ppy=per==="W"?52:12;
+    const start=g("fif_start").value?new Date(g("fif_start").value+"T00:00:00"):new Date();
+    // --- (1) crossing: first deposit that takes cost strictly above the threshold ---
+    let crossHtml, crossDate=null;
+    if(C0>=thr){
+      crossDate=new Date(start);
+      crossHtml='<p class="projred">Cost basis is already at/above '+fmtNZ(thr)
+        +' (incl. lump &amp; prior contributions) &mdash; FIF applies now.</p>';
+    }else if(amt>0){
+      const k=Math.floor((thr-C0)/amt)+1, total=C0+k*amt;
+      crossDate=new Date(start);
+      if(per==="W")crossDate.setDate(crossDate.getDate()+k*7);else crossDate.setMonth(crossDate.getMonth()+k);
+      const mon=crossDate.toLocaleDateString("en-NZ",{month:"short",year:"numeric"});
+      const m=crossDate.getMonth(), endYr=(m>=3)?crossDate.getFullYear()+1:crossDate.getFullYear();
+      const ty=(endYr-1)+"\\u2013"+String(endYr).slice(2);
+      crossHtml='<div class="projstats">'
+        +'<div class="stat">deposits until crossed<b>'+k.toLocaleString()+'</b></div>'
+        +'<div class="stat">time from start<b>'+(k/ppy).toFixed(1)+' yr</b></div>'
+        +'<div class="stat">crosses in<b>'+mon+'</b></div>'
+        +'<div class="stat">cost basis then<b>'+fmtNZ(total)+'</b></div></div>'
+        +'<p class="note">FIF starts from the <strong>'+ty+'</strong> NZ tax year and every year after.</p>';
+    }else{
+      crossHtml='<p class="note">With no ongoing deposits and cost below '+fmtNZ(thr)
+        +', FIF never applies at these inputs.</p>';
+    }
+    out.innerHTML=crossHtml;
+    // --- (2) FDR tax per NZ tax year, from the SAME p10/p50/p90 window factors as the fan ---
+    // horizonStats(freq, y, ...) is the projection calculator's global: value after y years
+    // across ~1,000 historical start dates. Opening value for the tax year y years out = that
+    // distribution; FDR income = 5% of each percentile; tax = her progressive rates on it.
+    const capYrs=Math.min(18,yrs);       // committed factors only cover horizons 1..18
+    let rows="",t10=0,t50=0,t90=0;
+    for(let y=1;y<=capYrs;y++){
+      const anniv=new Date(start); anniv.setFullYear(anniv.getFullYear()+y);
+      const tyStart=(anniv.getMonth()>=3)?anniv.getFullYear():anniv.getFullYear()-1;
+      const ty=tyStart+"\\u2013"+String(tyStart+1).slice(2);
+      const fif=crossDate && crossDate<=new Date(tyStart+1,2,31);   // crossed by 31 Mar close
+      const s=horizonStats(per,y,lump,amt,fee,wq,ws);
+      if(fif){
+        const f10=0.05*s.p10,f50=0.05*s.p50,f90=0.05*s.p90;
+        const x10=progTax(f10),x50=progTax(f50),x90=progTax(f90);
+        t10+=x10;t50+=x50;t90+=x90;
+        rows+='<tr><td>'+ty+'</td><td>'+trip(s.p10,s.p50,s.p90)+'</td><td>'+trip(f10,f50,f90)
+             +'</td><td>'+trip(x10,x50,x90)+'</td></tr>';
+      }else{
+        rows+='<tr><td>'+ty+'</td><td>'+trip(s.p10,s.p50,s.p90)
+             +'</td><td colspan="2" style="text-align:center;color:#52514e">under NZ$50k cost &mdash; exempt</td></tr>';
+      }
+    }
+    const cap=(yrs>18)?' (capped at the 18-yr factor grid)':'';
+    tbl.innerHTML='<h4 style="font-size:.98rem;margin:1.1rem 0 .3rem;">Estimated FIF tax by NZ tax year '
+      +'(deposit '+fmtNZ(amt)+'/'+(per==="W"?"wk":"mo")+(lump>0?" + "+fmtNZ(lump)+" lump":"")
+      +', '+Math.round(wq*100)+'% QQQ / '+Math.round(ws*100)+'% SPY)</h4>'
+      +'<p class="note" style="margin:.1rem 0 .4rem">Each cell: <strong>p10 &middot; p50 &middot; p90</strong> '
+      +'(bad decade &middot; median &middot; lucky start), from the same windows as the fan above.</p>'
+      +'<div style="overflow-x:auto"><table class="cmp"><thead><tr><th>NZ tax year</th>'
+      +'<th>Opening value (1 Apr)</th><th>FDR income (5%)</th><th>Tax @ her rates</th></tr></thead><tbody>'+rows
+      +'<tr><th>Total'+cap+'</th><td></td><td></td><th>'+trip(t10,t50,t90)+'</th></tr>'
+      +'</tbody></table></div>'
+      +'<p class="note">Opening value each year = the plan\\'s value after that many years across '
+      +'~1,000 historical windows (mid-year buys enter the following year&rsquo;s base &mdash; the '
+      +'FDR lag). Tax continues every year the holding is kept, beyond this '+yrs+'-yr window.</p>';
+  }
+  // Recompute on any change to the FIF fields, the shared projection fields, or a preset button.
+  document.querySelectorAll("#fif_form input,#proj_form input,#proj_form select")
+    .forEach(x=>x.addEventListener("input",calc));
+  document.querySelectorAll(".presets button").forEach(b=>b.addEventListener("click",()=>setTimeout(calc,0)));
+  calc();
+})();
+</script>
+"""
+
+
+def fif_section() -> str:
+    """FIF NZ$50k crossing (arithmetic) + annual FDR tax as a p10/p50/p90 range that reuses
+    the projection calculator's committed window factors via its global horizonStats."""
+    return _FIF_TEMPLATE
+
+
+# --------------------------------------------------------------------------------------
 # Sprint 7 — my real portfolio vs the same NZD deposits drip-fed weekly into SPY/QQQ.
 # Reads only the committed real_vs_dca_*.csv contract; the comparison numbers are the
 # engine's, never recomputed here.
@@ -658,6 +804,7 @@ def build() -> str:
     f1, dist_notes = fig_distribution()
     f2 = fig_fan()
     proj_html = projection_section()
+    fif_html = fif_section()
     f6, real_table, real_meta = fig_real_vs_dca()
     dip_table, dip_note = real_dip_table()
     f3, spans = fig_cycles(prices)
@@ -723,6 +870,7 @@ Outcome distribution view, so the Baby preset reproduces
 <strong>range</strong>; the assumed-rate figure is a labelled intuition check, not
 evidence.</p>
 {proj_html}
+{fif_html}
 </section>
 
 <section class="panel" id="real">

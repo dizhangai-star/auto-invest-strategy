@@ -27,7 +27,12 @@ buy-the-dip −3%), from the committed `results/real_vs_dca_*.csv`. Three buy-ti
 Mon–Fri) and **Buy the dip** (daily DCA that doubles on a −1/−2/−3% day and skips the next),
 plus a dip comparison on the real scenario inside the **My portfolio vs DCA** tab. The
 consistent finding: intra-period timing moves outcomes by basis points, while start-date luck
-and asset choice move them by percentage points.
+and asset choice move them by percentage points. The calculator tab also carries a **FIF tax
+estimator** for the baby's Hatch account (Sprint 11): when cumulative NZD cost basis crosses the
+NZ$50k de-minimis, and the annual FDR tax (5% of the 1-April market value at the child's own
+rates) once it does — shown as a p10/p50/p90 range from the same window factors. The point it
+makes: FIF is an annual deemed-income tax, so buying-and-never-selling does **not** defer it,
+and the child (not the platform) is the taxpayer.
 
 Your machine has open internet, so `yfinance` pulls real total-return history for you.
 (The Claude web sandbox can't reach Yahoo Finance, which is why this is built to run locally.)

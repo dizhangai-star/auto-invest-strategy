@@ -133,6 +133,18 @@ reference is always the offline (`data/*.csv`) one; a live `python3 backtest.py`
     result ≤~3bp/yr; the SPY-vs-QQQ gap and time-in-market moved it by multiples. Engine adds
     `REAL_STRATEGIES`/`_real_strategy_schedule`; `results/real_vs_dca_*.csv` now carry six
     curves + a keyed summary.
+13. ✅ FIF calculator for the baby's account (Sprint 11 — added to the Projection calculator
+    tab, below the projection): (a) when cumulative NZD **cost basis** crosses the NZ$50k
+    de-minimis (pure arithmetic on deposits — cost, not market value, so buy-only DCA still
+    triggers it), and (b) the annual **FDR** tax per NZ tax year once FIF applies (5% of the
+    1-April market value at the child's own progressive rates). The per-year opening value is
+    the **same p10/p50/p90 window distribution** as the fan — it reuses the projection's global
+    `horizonStats`, no second engine — so the tax is a bad-decade/median/lucky-start range.
+    Reads the shared deposit/cadence/horizon/lump/FX-fee/mix from the projection form; only
+    prior-contributions / threshold / start-date are FIF-specific. No engine or CSV change —
+    `fif_section()` in `build_dashboard.py`. Key takeaway surfaced: "buy, never sell" does NOT
+    avoid FIF (it's an annual deemed-income tax, not a realisation tax), and the child — not
+    Hatch — is the taxpayer (parent files her IR3).
 
 Open: the user's actual per-deposit schedule (date, NZD amount — likely via an IBKR
 connector/Flex export) to replace Sprint 7's even-split assumption in `even_nzd_schedule`;

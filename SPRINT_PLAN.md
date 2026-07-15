@@ -429,9 +429,39 @@ edges daily by a hair (deploys marginally earlier in a rising decade).
   wins — and both flip to losers on a falling path. Reinforces: for income-based DCA,
   "deploy every dollar the day it arrives" is already the most-invested-earliest you can be.
 
+## Sprint 11 — FIF calculator for the baby's account  ✅ SHIPPED *(Calculator tab; no engine/CSV change)*
+
+Prompted by a real question: as the baby's Hatch Kids QQQM holding approaches the NZ$50k FIF
+de-minimis, does "buy but never sell" avoid tax, and if not, how much per NZ tax year? Answer
+built into the **Projection calculator** tab, below the projection (`fif_section()` in
+`build_dashboard.py`):
+
+- **(a) Crossing** — cumulative NZD **cost basis** vs the NZ$50k threshold. De-minimis is on
+  *cost*, not market value, so a buy-only DCA still crosses it; FIF starts the first deposit that
+  takes cost strictly above $50k. Pure arithmetic (deposits, lump, prior contributions).
+- **(b) Annual FDR tax** — once FIF applies, deemed income = **5% of the 1-April market value**,
+  taxed at the child's own progressive rates (assumed her only income). Opening value per year is
+  the **same p10/p50/p90 window distribution as the fan** — reuses the projection's global
+  `horizonStats(freq, y, …)`, so it's *not* a second engine and *not* a single assumed rate. The
+  bill is shown as a bad-decade · median · lucky-start range per year + column totals.
+
+Shares the projection form's deposit/cadence/horizon/lump/FX-fee/mix (one parameter set); only
+prior-contributions / threshold / start-date are FIF-specific. NZ individual brackets (2025-26)
+hardcoded in JS; the deposit figure is read as NZD (Hatch deposits are NZD).
+
+**Result** *(baby example: NZ$600/wk, 12 yr, 100% QQQ, from Apr 2026)*: crosses $50k ~Nov 2027
+(1.6 yr) → FIF from the 2027-28 year. Annual tax climbs from ~$150–200 to ~$4.5k–13.6k by
+2038-39; **12-yr total ≈ NZ$19.3k (p10) · 34.6k (p50) · 48.7k (p90)**. The p50 is ~2× a flat-7%
+estimate because the historical QQQ p50 compounds far above 7% — a bigger balance means bigger
+5%-of-value FDR income; the same sample-length caveat as the window distribution applies. Key
+framings surfaced for the user: FIF is an **annual deemed-income tax, not a realisation tax** (so
+buy-and-hold does not defer it), and the **child is the taxpayer** — Hatch withholds nothing; the
+parent files her IR3. Not tax advice — structure (bare trust?) and cost-basis definition to
+confirm with an NZ accountant/IRD.
+
 ## Next session
 
-**All sprints (0–10, plus the 5b layout pass) are shipped and the site is live.**
+**All sprints (0–11, plus the 5b layout pass) are shipped and the site is live.**
 Nothing required remains.
 
 - **GitHub Pages: ✅ done** — enabled on `main` / `/docs`, status "built", live at
@@ -454,6 +484,10 @@ Nothing required remains.
   **My portfolio vs DCA** tab; `results/real_vs_dca_*.csv` now carry six curves + a keyed
   summary). Headline: cadence collapses into two clusters; no cash-matched timing rule beat
   income-DCA on the path.
+- **Sprint 11 is shipped** (FIF calculator on the Calculator tab — NZ$50k cost-basis crossing +
+  annual FDR tax as a p10/p50/p90 range via the projection's `horizonStats`; `fif_section()` in
+  `build_dashboard.py`, no engine/CSV change). Headline: buy-and-hold does not defer FIF, and the
+  child (not Hatch) is the taxpayer.
 - **Remaining candidate work (optional, not committed):**
   - Sprint 7 fidelity upgrade: export the user's actual per-deposit schedule (date, NZD
     amount) — likely via an IBKR connector/Flex export — and drop it into
